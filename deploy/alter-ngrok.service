@@ -1,0 +1,21 @@
+[Unit]
+Description=Stable ngrok HTTPS endpoint for Alter OAuth
+After=network-online.target alter-oauth.service
+Wants=network-online.target alter-oauth.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+User=jeongwoo
+Group=jeongwoo
+WorkingDirectory=/home/jeongwoo/hw-agent
+EnvironmentFile=/home/jeongwoo/hw-agent/.env
+ExecStart=/usr/local/bin/ngrok http http://127.0.0.1:8082 --inspect=false --log=stdout --log-format=json
+Restart=on-failure
+RestartSec=30
+UMask=0077
+MemoryMax=192M
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
