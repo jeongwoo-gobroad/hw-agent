@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Alter 시작 및 복구
+Comment=서버, 모델, ngrok 및 SmartThings 연결 복구
+Exec=/home/pi/hw-agent/start.sh
+Path=/home/pi/hw-agent
+Terminal=true
+Icon=system-run
+Categories=Utility;

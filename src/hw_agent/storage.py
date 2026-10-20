@@ -9,13 +9,14 @@ from . import db
 
 def devices():
     result = subprocess.run(
-        ["lsblk", "-J", "-b", "-o", "NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS,UUID,TRAN,MODEL"],
+        ["lsblk", "-J", "-b", "-o", "NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS,UUID,TRAN,MODEL,SERIAL"],
         capture_output=True, text=True, check=True, timeout=10)
     found = []
     def visit(items, parent=None):
         for item in items:
             transport = item.get("tran") or (parent or {}).get("tran")
             model = item.get("model") or (parent or {}).get("model")
+            serial = item.get("serial") or (parent or {}).get("serial")
             external = transport == "usb" or item["name"].startswith("nvme")
             if external and item.get("fstype") and item.get("uuid"):
                 mounts = [m for m in item.get("mountpoints", []) if m and m != "[SWAP]"]
@@ -24,17 +25,26 @@ def devices():
                     usage = shutil.disk_usage(mount) if mount else None
                 except OSError:
                     usage = None
-                found.append({**item, "mount": mount, "model": model, "transport": transport or "pcie",
+                found.append({**item, "mount": mount, "model": model, "serial": serial, "transport": transport or "pcie",
                               "free": usage.free if usage else None})
-            visit(item.get("children", []), {**item, "tran": transport, "model": model})
+            visit(item.get("children", []), {**item, "tran": transport, "model": model, "serial": serial})
     visit(json.loads(result.stdout)["blockdevices"])
     return found
 
 
+def device_for_uuid(identifier, listing=None):
+    matches = [d for d in (devices() if listing is None else listing) if d["uuid"] == identifier]
+    if len(matches) > 1:
+        raise HTTPException(409, "동일한 파일시스템 UUID의 장치가 여러 개입니다. 복제 드라이브를 분리하세요.")
+    return matches[0] if matches else None
+
+
 def external_path(path):
     p = Path(path).resolve(strict=True)
-    for device in devices():
+    listing = devices()
+    for device in listing:
         if device["mount"] and p.is_relative_to(Path(device["mount"]).resolve()):
+            device_for_uuid(device["uuid"], listing)
             if any(part.startswith(".") for part in p.relative_to(device["mount"]).parts):
                 raise HTTPException(403, "숨김 폴더는 등록할 수 없습니다.")
             return p, device
@@ -45,22 +55,29 @@ def add_root(path):
     p, device = external_path(path)
     if not p.is_dir():
         raise HTTPException(400, "폴더를 선택하세요.")
+    relative = str(p.relative_to(Path(device["mount"]).resolve()))
     with db.connect() as conn:
-        conn.execute("INSERT OR IGNORE INTO roots(path,uuid,mount,label) VALUES(?,?,?,?)",
-                     (str(p), device["uuid"], device["mount"], p.name))
-    return db.rows("SELECT * FROM roots WHERE path=?", (str(p),))[0]
+        conn.execute("""INSERT INTO roots(path,uuid,mount,label,relative_path) VALUES(?,?,?,?,?)
+                     ON CONFLICT(uuid,relative_path) DO UPDATE SET path=excluded.path,mount=excluded.mount""",
+                     (str(p), device["uuid"], device["mount"], p.name, relative))
+    return db.rows("SELECT * FROM roots WHERE uuid=? AND relative_path=?",
+                   (device["uuid"], relative))[0]
 
 
 def root_path(root):
-    for device in devices():
-        if device["uuid"] == root["uuid"] and device["mount"]:
-            relative = Path(root["path"]).relative_to(root["mount"])
+    device = device_for_uuid(root["uuid"])
+    if device and device["mount"]:
+        relative = Path(root.get("relative_path") or Path(root["path"]).relative_to(root["mount"]))
+        try:
             p = (Path(device["mount"]) / relative).resolve(strict=True)
-            if p.is_relative_to(Path(device["mount"]).resolve()) and p.is_dir():
-                if root["mount"] != device["mount"]:
-                    with db.connect() as conn:
-                        conn.execute("UPDATE roots SET path=?,mount=? WHERE id=?", (str(p),device["mount"],root["id"]))
-                return p
+        except OSError:
+            raise HTTPException(409, "등록된 폴더가 현재 드라이브에 없습니다.")
+        if p.is_relative_to(Path(device["mount"]).resolve()) and p.is_dir():
+            if root["mount"] != device["mount"] or not root.get("relative_path"):
+                with db.connect() as conn:
+                    conn.execute("UPDATE roots SET path=?,mount=?,relative_path=? WHERE id=?",
+                                 (str(p),device["mount"],str(relative),root["id"]))
+            return p
     raise HTTPException(409, "외장 드라이브 또는 폴더가 연결되지 않았습니다.")
 
 
@@ -106,8 +123,8 @@ def smb(action, path, name, readonly=True):
 def restore_shares():
     saved = json.loads(db.state("shares", "{}"))
     for share in saved.values():
-        device = next((d for d in devices() if d["uuid"]==share["uuid"] and d["mount"]),None)
-        if device:
+        device = device_for_uuid(share["uuid"])
+        if device and device["mount"]:
             path = str(Path(device["mount"])/share["relative"])
             if path != share["path"]:
                 smb("set", path, share["name"], share["readonly"])

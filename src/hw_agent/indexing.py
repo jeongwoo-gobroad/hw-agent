@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 import uuid
+from fastapi import HTTPException
 from . import db, storage
 
 scan_lock = threading.Lock()
@@ -34,8 +35,16 @@ def scan():
         previous = float(db.state("generation_at", "0"))
         rebuild = time.time() - previous >= 3 * 86400 or db.state("extractor_version") != EXTRACTOR_VERSION
         generation = uuid.uuid4().hex
+        complete = True
         for root in db.rows("SELECT * FROM roots"):
-            base = storage.root_path(root)
+            try:
+                base = storage.root_path(root)
+            except HTTPException as error:
+                if error.status_code != 409:
+                    raise
+                status["error"] = error.detail
+                complete = False
+                continue
             with db.connect() as conn:
                 conn.execute("DELETE FROM staging WHERE root=?", (root["id"],))
             for directory, dirs, names in os.walk(base, followlinks=False):
@@ -81,7 +90,7 @@ def scan():
                   SELECT files.id,staging.name_tokens,staging.path_tokens,staging.body_tokens
                   FROM staging JOIN files ON files.path=staging.path WHERE staging.root=?""", (root["id"],))
                 conn.execute("DELETE FROM staging WHERE root=?", (root["id"],))
-        if rebuild:
+        if rebuild and complete:
             db.set_state("generation_at", str(time.time()))
             db.set_state("extractor_version", EXTRACTOR_VERSION)
         db.set_state("last_scan", str(time.time()))

@@ -1,0 +1,21 @@
+[Unit]
+Description=Restore Alter registered storage and verify startup connections
+After=network-online.target alter.service alter-llm.service alter-ngrok.service
+Wants=network-online.target alter.service alter-llm.service alter-ngrok.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/hw-agent
+Environment=PYTHONPATH=/home/pi/hw-agent/src
+ExecStart=/home/pi/hw-agent/.venv/bin/python scripts/recover.py
+TimeoutStartSec=420
+RestartPreventExitStatus=2
+Restart=on-failure
+RestartSec=60
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
