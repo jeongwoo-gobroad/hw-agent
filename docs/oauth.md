@@ -36,7 +36,24 @@
 3. Pi `.env`의 SMARTTHINGS_REDIRECT_URI 변경 후 `sudo systemctl restart alter alter-oauth`.
 4. 대시보드에서 새 연결 시작. 이전 ticket/인가 URL을 재사용하지 않습니다.
 
-영구 배포에서는 소유한 도메인에 named tunnel 또는 HTTPS 리버스 프록시를 연결하고 같은 callback URI를 유지하세요. 도메인/Cloudflare 계정은 아직 설정되지 않았습니다. 기존 OAuth 토큰은 내부망 연결 후 터널이 중단돼도 SmartThings API에 직접 갱신할 수 있습니다.
+고정 콜백에는 ngrok 무료 개발 도메인도 사용할 수 있습니다. 별도 소유 도메인이 반드시 필요한 것은 아닙니다. 기존 OAuth 토큰은 내부망 연결 후 터널이 중단돼도 SmartThings API에 직접 갱신할 수 있습니다.
+
+### ngrok 무료 플랜
+
+[공식 무료 플랜 안내](https://ngrok.com/docs/pricing-limits/free-plan-limits) 기준, 계정에 할당된 고정 개발 도메인 1개와 인증서가 자동 관리되는 HTTPS endpoint를 제공합니다. endpoint의 강제 시간 만료는 없지만 무료 사용량 한도는 적용됩니다. 현재 월 1GB 송신/HTTP 20,000회 한도가 있어 저빈도 OAuth 콜백에 적합합니다. 무료 브라우저 안내 페이지에서 Visit을 누르면 해당 도메인에 7일간 안내가 생략됩니다. OAuth 진입 과정에서 안내를 통과한 뒤 삼성 인증을 진행할 수 있습니다.
+
+1. 공식 ARM64 ngrok 에이전트를 `/usr/local/bin/ngrok`에 설치합니다. 이 Pi에는 3.39.11을 준비했습니다.
+2. 프로젝트 `.env`에 `NGROK_AUTHTOKEN`을 설정합니다. 자격증명 ID가 아니라 [Your Authtoken](https://dashboard.ngrok.com/get-started/your-authtoken)의 실제 토큰이 필요합니다.
+3. `deploy/alter-ngrok.service`를 systemd에 설치하고 시작합니다. 이 서비스는 내부망 대시보드가 아니라 기존 콜백 서버8082만 연결하며 로컬 요청 inspection을 끕니다.
+4. loopback `http://127.0.0.1:4040/api/tunnels`에서 할당된 HTTPS 주소를 확인합니다. 이 주소의 `/oauth/callback`을 SmartThings 앱과 `.env` 양쪽에 등록합니다.
+5. alter/alter-oauth 재시작 후 HTTPS health, 잘못된 state 거부, 대시보드에서 새 OAuth 연결을 검증합니다.
+6. ngrok 재시작 뒤 도메인이 유지되는지 확인한 후 `systemctl enable alter-ngrok`을 적용하고 기존 alter-tunnel을 중지합니다.
+
+2026-10-20: 실제 Authtoken으로 연결 후 ngrok 고정 HTTPS 주소를 SmartThings 앱과 Pi 설정에 등록했습니다. 에이전트 재시작 후 같은 주소 유지, HTTPS health200, 잘못된 OAuth state400, 공개 기기 API404와 기존 SmartThings 27개 기기 조회를 확인했습니다. Chrome에서 무료 안내 페이지를 거쳐 동일 삼성 계정/권한으로 재인가한 뒤 ngrok 콜백의 연결 완료를 확인했습니다. ngrok 자동 시작을 활성화하고 기존 Cloudflare 임시 터널은 중지했습니다. 토큰은 Pi .env에만 저장하며 Git에 포함하지 않습니다.
+
+### ipTIME DDNS
+
+DDNS는 변하는 공인 IP에 도메인을 연결하는 기능이며 HTTPS 인증서를 대신하지 않습니다. ipTIME DDNS 이름에 유효한 인증서를 발급·갱신하는 리버스 프록시와 공유기 포트포워딩을 구성하면 같은 OAuth 콜백을 제공할 수 있습니다. 이 방식은 외부에서 접근 가능한 회선/포트 조건이 필요합니다. ngrok 무료 플랜에서는 ipTIME DDNS를 사용자 지정 도메인으로 연결하는 대신, 계정에 할당된 ngrok 도메인을 사용합니다.
 
 ## 검증
 

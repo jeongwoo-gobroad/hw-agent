@@ -13,7 +13,7 @@
 | alter | 내부망8080 | 1200MiB + swap256MiB |
 | alter-llm | 127.0.0.1:8081 | 5800MiB + swap128MiB |
 | alter-oauth | 127.0.0.1:8082 | 256MiB |
-| alter-tunnel | 임시 HTTPS→8082 | 192MiB |
+| alter-ngrok | 고정 ngrok HTTPS→8082 | 192MiB |
 
 `systemctl status alter alter-llm alter-oauth`, `journalctl -u alter`, `/health`로 확인합니다. 서비스 파일 변경은 root install 후 daemon-reload/restart. 별도 프로세스의 모델은 웹 재시작과 분리합니다. `.env` 변경 후 alter와 alter-oauth 모두 재시작해야 합니다.
 
@@ -29,6 +29,8 @@ cmake --build data/build/llama.cpp/build --target llama-server -j3
 ```
 
 models에 GGUF를 다운로드하고 기록의 해시를 확인합니다. data/llm-api-key에 무작위 토큰을 생성해 chmod600, deploy/alter-llm.service 설치 후 enable --now. 현재 기본값 Qwen3.5-4B-Q4_K_M, context2048/parallel1/threads3. MediaPipe gesture_recognizer.task는 Google 공식 모델 배포에서 별도 다운로드합니다. 가중치는 Git에 넣지 않습니다.
+
+ngrok은 .env의 NGROK_AUTHTOKEN을 읽고 자동 시작합니다. 계정 고정 개발 도메인을 쓰므로 별도 소유 도메인이 필요하지 않습니다. 무료 사용량 한도와 브라우저 안내는 docs/oauth.md를 참고하세요. 예전 alter-tunnel.service는 Cloudflare 임시 터널용 예제로 보존하며 현재 운용에는 사용하지 않습니다.
 
 ## Samba와 외장 저장장치
 
