@@ -1,6 +1,6 @@
 # 라이브러리 검토
 
-조사 기준 2026-10-20. 다음은 채택 후보이며 실제 ARM64 설치 검증을 완료한 의존성 목록이 아니다.
+조사 기준 2026-10-20. 초기 후보 검토표입니다. 실제 설치·채택 목록은 requirements.txt와 requirements-pi.lock.txt가 기준입니다. Jinja2/pydantic-settings/Kiwi/watchdog/python-docx는 현재 채택하지 않았습니다. 현재 설정은 python-dotenv, 한국어는 bigram, 파일 감시는 60초 대조, DOCX는 제한된 XML 추출입니다. OAuth는 Authlib와 cryptography를 채택했습니다.
 존재하는 라이브러리를 먼저 평가하고 부족한 업무 로직만 자체 구현한다.
 
 | 영역 | 후보 / 공식 자료 | 결정·검증 사항 |

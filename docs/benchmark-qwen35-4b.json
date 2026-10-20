@@ -1,0 +1,86 @@
+[
+  {
+    "prompt": "지난달 회의 PDF를 찾아줘",
+    "expected": "search",
+    "passed": true,
+    "response": "{\"intent\":\"search\",\"query\":\"지난달 회의 PDF\",\"ext\":\"\",\"after\":null,\"before\":null,\"flow_id\":null,\"answer\":\"\"}",
+    "seconds": 16.73,
+    "usage": {
+      "completion_tokens": 31,
+      "prompt_tokens": 118,
+      "total_tokens": 149,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 118,
+      "prompt_ms": 8049.584,
+      "prompt_per_token_ms": 68.21681355932203,
+      "prompt_per_second": 14.65914263395475,
+      "predicted_n": 31,
+      "predicted_ms": 8588.918,
+      "predicted_per_token_ms": 286.29726666666664,
+      "predicted_per_second": 3.4928730254497715
+    },
+    "peak_cgroup_bytes": 4160126976,
+    "minimum_available_bytes": 4465541120
+  },
+  {
+    "prompt": "안녕, 너는 무슨 일을 도와줄 수 있어?",
+    "expected": "chat",
+    "passed": true,
+    "response": "{\"intent\":\"chat\",\"query\":\"안녕, 너는 무슨 일을 도와줄 수 있어?\",\"ext\":\"\",\"after\":null,\"before\":null,\"flow_id\":null,\"answer\":\"안녕하세요! 저는 2026 년 10 월 20 일 현재, 파일 검색, 일반적인 대화, 그리고 등록한 자동화 플로우 (예: '취침') 실행을 도와드릴 수 있습니다.\"}",
+    "seconds": 26.76,
+    "usage": {
+      "completion_tokens": 89,
+      "prompt_tokens": 123,
+      "total_tokens": 212,
+      "prompt_tokens_details": {
+        "cached_tokens": 99
+      }
+    },
+    "timings": {
+      "cache_n": 99,
+      "prompt_n": 24,
+      "prompt_ms": 1735.217,
+      "prompt_per_token_ms": 72.30070833333333,
+      "prompt_per_second": 13.831123139065603,
+      "predicted_n": 89,
+      "predicted_ms": 25009.287,
+      "predicted_per_token_ms": 284.1964431818182,
+      "predicted_per_second": 3.5186928759704346
+    },
+    "peak_cgroup_bytes": 4161929216,
+    "minimum_available_bytes": 4491968512
+  },
+  {
+    "prompt": "취침 Flow 실행해줘",
+    "expected": "flow",
+    "passed": true,
+    "response": "{\"intent\":\"flow\",\"query\":\"취침 Flow 실행\",\"ext\":\"\",\"after\":null,\"before\":null,\"flow_id\":\"sleep\",\"answer\":\"\"}",
+    "seconds": 10.72,
+    "usage": {
+      "completion_tokens": 33,
+      "prompt_tokens": 119,
+      "total_tokens": 152,
+      "prompt_tokens_details": {
+        "cached_tokens": 99
+      }
+    },
+    "timings": {
+      "cache_n": 99,
+      "prompt_n": 20,
+      "prompt_ms": 1481.154,
+      "prompt_per_token_ms": 74.0577,
+      "prompt_per_second": 13.502984834797731,
+      "predicted_n": 33,
+      "predicted_ms": 9161.51,
+      "predicted_per_token_ms": 286.2971875,
+      "predicted_per_second": 3.4928739912961944
+    },
+    "peak_cgroup_bytes": 4381687808,
+    "minimum_available_bytes": 4280532992
+  }
+]

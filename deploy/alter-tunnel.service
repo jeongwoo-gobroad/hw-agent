@@ -1,0 +1,14 @@
+[Unit]
+Description=Temporary HTTPS tunnel for Alter OAuth callback
+After=alter-oauth.service network-online.target
+Wants=alter-oauth.service
+
+[Service]
+User=jeongwoo
+ExecStart=/usr/local/bin/cloudflared tunnel --url http://127.0.0.1:8082 --no-autoupdate
+Restart=on-failure
+RestartSec=5
+MemoryMax=192M
+NoNewPrivileges=true
+
+# Deliberately not enabled at boot: quick-tunnel hostnames are ephemeral.

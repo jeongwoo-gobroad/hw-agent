@@ -1,0 +1,18 @@
+[Unit]
+Description=Alter SmartThings OAuth callback gateway
+After=alter.service network-online.target
+Requires=alter.service
+
+[Service]
+User=jeongwoo
+Group=jeongwoo
+WorkingDirectory=/home/jeongwoo/hw-agent
+Environment=PYTHONPATH=/home/jeongwoo/hw-agent/src
+ExecStart=/home/jeongwoo/hw-agent/.venv/bin/uvicorn hw_agent.oauth_gateway:app --host 127.0.0.1 --port 8082 --workers 1 --no-access-log
+Restart=on-failure
+UMask=0077
+MemoryMax=256M
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
