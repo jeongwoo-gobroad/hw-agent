@@ -27,7 +27,7 @@
 
 ## HTTPS 콜백
 
-`alter-oauth.service`는 127.0.0.1:8082의 `/health`, `/oauth/start`, `/oauth/callback`만 제공합니다. 파일/카메라/기기 API는 공개하지 않습니다. access log를 꺼 인가 코드가 URL 로그에 남지 않도록 합니다.
+현재 외부 진입점은 ngrok → 127.0.0.1:8080입니다. 웹 앱이 `/oauth/start`, `/oauth/callback`을 인증 없이 제공하되 OAuth ticket/state/쿠키 검증은 그대로 적용합니다. 나머지 파일/카메라/기기 API는 ID/PW 세션 인증이 필요합니다. 독립 `alter-oauth.service`의8082 콜백 앱은 대체 구성으로 보존합니다. 두 Uvicorn 서비스의 access log를 꺼 인가 코드가 URL 로그에 남지 않도록 합니다.
 
 실증용 `alter-tunnel.service`는 공식 cloudflared를 사용하며 자동 부팅 활성화하지 않습니다. 임시 터널 주소는 재시작할 때 달라집니다. 주소가 바뀌면:
 
@@ -44,12 +44,12 @@
 
 1. 공식 ARM64 ngrok 에이전트를 `/usr/local/bin/ngrok`에 설치합니다. 이 Pi에는 3.39.11을 준비했습니다.
 2. 프로젝트 `.env`에 `NGROK_AUTHTOKEN`을 설정합니다. 자격증명 ID가 아니라 [Your Authtoken](https://dashboard.ngrok.com/get-started/your-authtoken)의 실제 토큰이 필요합니다.
-3. `deploy/alter-ngrok.service`를 systemd에 설치하고 시작합니다. 이 서비스는 내부망 대시보드가 아니라 기존 콜백 서버8082만 연결하며 로컬 요청 inspection을 끕니다.
+3. `deploy/alter-ngrok.service`를 systemd에 설치하고 시작합니다. 이 서비스는 인증된 대시보드8080을 연결하며 로컬 요청 inspection을 끕니다.
 4. loopback `http://127.0.0.1:4040/api/tunnels`에서 할당된 HTTPS 주소를 확인합니다. 이 주소의 `/oauth/callback`을 SmartThings 앱과 `.env` 양쪽에 등록합니다.
 5. alter/alter-oauth 재시작 후 HTTPS health, 잘못된 state 거부, 대시보드에서 새 OAuth 연결을 검증합니다.
 6. ngrok 재시작 뒤 도메인이 유지되는지 확인한 후 `systemctl enable alter-ngrok`을 적용하고 기존 alter-tunnel을 중지합니다.
 
-2026-10-20: 실제 Authtoken으로 연결 후 ngrok 고정 HTTPS 주소를 SmartThings 앱과 Pi 설정에 등록했습니다. 에이전트 재시작 후 같은 주소 유지, HTTPS health200, 잘못된 OAuth state400, 공개 기기 API404와 기존 SmartThings 27개 기기 조회를 확인했습니다. Chrome에서 무료 안내 페이지를 거쳐 동일 삼성 계정/권한으로 재인가한 뒤 ngrok 콜백의 연결 완료를 확인했습니다. ngrok 자동 시작을 활성화하고 기존 Cloudflare 임시 터널은 중지했습니다. 토큰은 Pi .env에만 저장하며 Git에 포함하지 않습니다.
+2026-10-20: 실제 Authtoken으로 연결 후 ngrok 고정 HTTPS 주소를 SmartThings 앱과 Pi 설정에 등록했습니다. 에이전트 재시작 후 같은 주소 유지, HTTPS health200, 잘못된 OAuth state400, 당시 콜백 전용 구성에서 기기 API404와 기존 SmartThings 27개 기기 조회를 확인했습니다. Chrome에서 무료 안내 페이지를 거쳐 동일 삼성 계정/권한으로 재인가한 뒤 ngrok 콜백의 연결 완료를 확인했습니다. ngrok 자동 시작을 활성화하고 기존 Cloudflare 임시 터널은 중지했습니다. 토큰은 Pi .env에만 저장하며 Git에 포함하지 않습니다.
 
 ### ipTIME DDNS
 
@@ -58,3 +58,5 @@ DDNS는 변하는 공인 IP에 도메인을 연결하는 기능이며 HTTPS 인�
 ## 검증
 
 2026-10-20 실제 삼성 계정 인가, 토큰 교환, 27개 기기 조회, 허용된 메인 조명 on→off→on 상태 복원, 실제 refresh token 회전과 이후 조회 성공. `tests/test_oauth.py`는 위조 쿠키, 일회성 상태, 로그아웃 세션, 암호화, 갱신 재사용 방지와 공개 표면 제한을 네트워크 없이 검사합니다. 실제 만료 24시간 이후의 장기 운용은 아직 관찰하지 않았습니다.
+
+외부 대시보드 전환 후: 비로그인 파일/카메라 API401, 로그인 후 검색/문서 미리보기/MJPEG 수신을 Windows와 Chrome에서 확인했습니다. 무료 플랜의 월1GB 송신 한도는 영상 스트리밍으로 빠르게 소진될 수 있으므로 장시간 원격 감시에는 적합하지 않을 수 있습니다.

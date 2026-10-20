@@ -8,6 +8,7 @@ import subprocess
 import threading
 import time
 import uuid
+import queue
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,6 +16,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 from . import auth, chat, config, db, flows, indexing, preview, smartthings, storage, oauth
 from .camera import camera
+from . import oauth_gateway
 
 
 @asynccontextmanager
@@ -34,12 +36,15 @@ app = FastAPI(title="Alter", docs_url=None, redoc_url=None, openapi_url=None, li
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=__import__("os").getenv(
     "ALLOWED_HOSTS", "127.0.0.1,localhost,192.168.0.44,geb-v1,geb-v1.local").split(","))
 WEB = Path(__file__).parent / "web"
+app.add_api_route("/oauth/start", oauth_gateway.start, methods=["GET"])
+app.add_api_route("/oauth/callback", oauth_gateway.callback, methods=["GET"])
 
 
 @app.middleware("http")
 async def security(request: Request, call_next):
     path = request.url.path
-    public = path in {"/login", "/api/login", "/health"} or path.startswith("/static/")
+    public = (path in {"/login", "/api/login", "/health"} or path.startswith("/static/")
+              or (path in {"/oauth/start", "/oauth/callback"} and request.method == "GET"))
     current = auth.session(request) if not public else None
     if not public and current is None:
         if path.startswith("/api/"):
@@ -49,7 +54,7 @@ async def security(request: Request, call_next):
         origin = request.headers.get("origin")
         if origin and origin != str(request.base_url).rstrip("/"):
             return JSONResponse({"detail": "Origin mismatch"}, status_code=403)
-        if path != "/api/login" and not secrets.compare_digest(request.headers.get("x-csrf-token", ""), current["csrf"]):
+        if path != "/api/login" and (current is None or not secrets.compare_digest(request.headers.get("x-csrf-token", ""), current["csrf"])):
             return JSONResponse({"detail": "CSRF token required"}, status_code=403)
         try:
             length = int(request.headers.get("content-length", "0"))
@@ -84,7 +89,9 @@ class Login(BaseModel):
 def login(body: Login, request: Request):
     token, csrf = auth.login(body.username, body.password, request.client.host)
     response = JSONResponse({"csrf": csrf})
-    response.set_cookie("alter_session", token, httponly=True, secure=config.SECURE_COOKIE, samesite="strict", max_age=43200)
+    response.set_cookie("alter_session", token, httponly=True,
+                        secure=config.SECURE_COOKIE or request.url.scheme == "https",
+                        samesite="strict", max_age=43200)
     return response
 
 
@@ -284,6 +291,45 @@ class Message(BaseModel):
 @app.post("/api/sessions/{identifier}/messages")
 def message(identifier: str, body: Message):
     return chat.respond(identifier, body.message)
+
+
+@app.post("/api/sessions/{identifier}/messages/stream")
+def message_stream(identifier: str, body: Message, request: Request):
+    if not db.rows("SELECT id FROM sessions WHERE id=?", (identifier,)):
+        raise HTTPException(404, "대화를 찾을 수 없습니다.")
+    events = queue.Queue()
+    cancelled = threading.Event()
+
+    def generate():
+        try:
+            result = chat.respond(identifier, body.message, events.put, cancelled)
+            events.put({"type": "result", "result": result})
+        except HTTPException as exc:
+            events.put({"type": "error", "message": exc.detail})
+        except Exception:
+            events.put({"type": "error", "message": "응답을 생성하지 못했습니다. 다시 시도하세요."})
+        finally:
+            events.put(None)
+
+    def stream():
+        threading.Thread(target=generate, daemon=True).start()
+        try:
+            yield 'data: {"type":"status","text":"요청을 읽고 있습니다…"}\n\n'
+            while True:
+                if auth.session(request) is None:
+                    break
+                try:
+                    event = events.get(timeout=2)
+                except queue.Empty:
+                    yield ": keepalive\n\n"
+                    continue
+                if event is None:
+                    break
+                yield "data: " + json.dumps(event, ensure_ascii=True) + "\n\n"
+        finally:
+            cancelled.set()
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"X-Accel-Buffering": "no", "Cache-Control": "no-store"})
 
 
 @app.get("/api/smartthings/devices")

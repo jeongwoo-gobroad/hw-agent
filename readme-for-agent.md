@@ -19,7 +19,7 @@ README.md는 실제 제공 기능과 사용자 동선, docs/acceptance.md는 검
 | chat.py | 세션/히스토리, JSON intent, 검색 카드/확인 제안, 명시 날짜·확장자 규칙 |
 | smartthings.py | OAuth/PAT 토큰 선택, REST 오류, capability/인수 검증 |
 | oauth.py | ticket/state/cookie 바인딩, 세션 검증, 암호화 저장, 파일 잠금과 갱신 |
-| oauth_gateway.py | 공개 HTTPS 콜백만; dashboard API를 이 앱에 추가하지 않음 |
+| oauth_gateway.py | 콜백 함수/독립 콜백 앱. app.py가 같은 함수를 /oauth/*에 등록해 ngrok 대시보드와 경로 공유 |
 | flows.py | 저장된 단계 순차 실행, 중복 요청/쿨다운, 실패 시 중단/기록 |
 | camera.py | 단일 Picamera2 소유, MJPEG, FFmpeg 분할 녹화, MediaPipe 제스처 |
 | web/ | HTML, vanilla JS, CSS, 공식 로고. 프런트엔드 빌드 도구 없음 |
@@ -51,3 +51,15 @@ Flow는 실행 결과를 저장하고 실패 단계에서 멈춥니다. 물리 �
 6. 서비스 health, 모델 health, Git 원격 HEAD, 실제 배포 파일 hash 확인.
 
 현재 root helper는 jeongwoo UID/GID1000 전용입니다. 외장 vfat에는 utf8=1 옵션이 필요합니다. Windows 편집 뒤 helper/shebang 파일이 CRLF가 되지 않도록 .gitattributes와 배포 bytes를 확인하세요. `sudo` 전체 권한을 웹에 부여하지 않습니다.
+
+## 외부 HTTPS 진입점
+
+현재 alter-ngrok은127.0.0.1:8080으로 연결합니다. app.py에서 정확히 GET /oauth/start와 /oauth/callback만 인증 예외로 허용합니다. HTTPS 세션 쿠키는 Secure이며 내부망 HTTP 세션과 호스트가 분리됩니다. forwarded header 신뢰는 loopback으로 제한합니다. tests/live_external.py를 Windows에서 공개 URL 대상으로 실행하면 로그인·CSRF·파일 검색/문서 미리보기·실제 카메라 프레임·로그아웃 차단을 검사합니다. 카메라 테스트는 시작 전 꺼져 있었다면 종료 후 다시 끕니다.
+
+## 스트리밍과 UI 구성
+
+`generation.py`는 llama.cpp SSE를 읽고 부분 JSON에서 answer/query 문자열만 안전하게 추출합니다. `chat.respond`의 선택적 on_delta/cancelled 인자를 통해 전달하며 최종 JSON 검증·DB 저장은 기존 경로를 유지합니다. `POST /api/sessions/{id}/messages/stream`은 status/delta/result/error 이벤트와 heartbeat를 반환합니다. delta.text는 누적 문자열이며 이어 붙이지 않고 교체합니다. 기존 messages POST는 호환성을 위해 유지합니다. 인증·CSRF는 두 경로 모두 적용됩니다. 연결 종료 시 취소를 전달하지만 모델 prefill 중에는 다음 청크까지 취소가 지연될 수 있습니다. 취소된 부분 답변은 저장하지 않습니다.
+
+`web/static/stream.js`는 fetch 스트림과 UTF-8 청크 경계를 처리합니다. `theme.js`는 초기 시스템 설정 또는 localStorage 선택을 적용하고 라이트/다크 전환을 담당합니다. 색상은 style.css 변수로 관리합니다. app.js는 활성 대화, 생성 중 입력 잠금, 빈 상태, 파일 페이지 누적 로드, 카메라 상태별 버튼과 폴더 선택을 관리합니다. storage.devices는 파티션에 부모 모델명을 상속하여 드라이브 식별을 돕습니다.
+
+검증: tests/test_generation.py는 부분 문자열·다중 이벤트·취소를 검사합니다. tests/live_stream.py는 공개 URL에서 첫 delta와 완료 시각, 실제 로컬 모델 및 영구 저장을 검사합니다.

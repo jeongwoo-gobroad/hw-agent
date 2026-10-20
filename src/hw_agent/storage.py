@@ -15,6 +15,7 @@ def devices():
     def visit(items, parent=None):
         for item in items:
             transport = item.get("tran") or (parent or {}).get("tran")
+            model = item.get("model") or (parent or {}).get("model")
             external = transport == "usb" or item["name"].startswith("nvme")
             if external and item.get("fstype") and item.get("uuid"):
                 mounts = [m for m in item.get("mountpoints", []) if m and m != "[SWAP]"]
@@ -23,9 +24,9 @@ def devices():
                     usage = shutil.disk_usage(mount) if mount else None
                 except OSError:
                     usage = None
-                found.append({**item, "mount": mount, "transport": transport or "pcie",
+                found.append({**item, "mount": mount, "model": model, "transport": transport or "pcie",
                               "free": usage.free if usage else None})
-            visit(item.get("children", []), {**item, "tran": transport})
+            visit(item.get("children", []), {**item, "tran": transport, "model": model})
     visit(json.loads(result.stdout)["blockdevices"])
     return found
 
