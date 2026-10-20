@@ -1,0 +1,3 @@
+# Design phase: no application runtime has been implemented or validated.
+# Add only tested direct Python dependencies as components are implemented.
+# Candidate libraries and OS packages: docs/libraries.md
