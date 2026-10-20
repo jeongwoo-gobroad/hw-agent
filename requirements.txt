@@ -1,3 +1,18 @@
-# Design phase: no application runtime has been implemented or validated.
-# Add only tested direct Python dependencies as components are implemented.
-# Candidate libraries and OS packages: docs/libraries.md
+fastapi>=0.115,<1
+uvicorn>=0.34,<1
+python-dotenv>=1.0,<2
+httpx>=0.28,<1
+pillow>=11,<13
+pillow-heif>=0.22,<2
+defusedxml>=0.7,<1
+pypdf>=5,<7
+scikit-learn>=1.6,<2
+tqdm>=4.67,<5
+mediapipe==1.1.1
+numpy>=2,<3
+pyhwp==0.1b15
+# pyhwp's wheel omits these runtime dependencies.
+six>=1.17,<2
+lxml>=5,<7
+Authlib>=1.6,<2
+cryptography>=44,<48

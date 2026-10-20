@@ -1,0 +1,86 @@
+[
+  {
+    "prompt": "지난달 회의 PDF를 찾아줘",
+    "expected": "search",
+    "passed": true,
+    "response": "{\"intent\":\"search\",\"query\":\"지난달 회의 PDF\"}",
+    "seconds": 66.31,
+    "usage": {
+      "completion_tokens": 15,
+      "prompt_tokens": 119,
+      "total_tokens": 134,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 119,
+      "prompt_ms": 58631.173,
+      "prompt_per_token_ms": 492.6989327731093,
+      "prompt_per_second": 2.0296370328459914,
+      "predicted_n": 15,
+      "predicted_ms": 7659.967,
+      "predicted_per_token_ms": 547.1405,
+      "predicted_per_second": 1.8276841140438334
+    },
+    "peak_cgroup_bytes": 604700672,
+    "minimum_available_bytes": 6857523200
+  },
+  {
+    "prompt": "안녕, 너는 무슨 일을 도와줄 수 있어?",
+    "expected": "chat",
+    "passed": false,
+    "response": "안녕하세요! 저는 다양한 도움을 드릴 수 있습니다. 예를 들어:\n\n- 오늘 날짜나 특정 날짜 확인\n- 간단한 정보 검색\n- 자동화된 작업(등록된 Flow에 따라)\n- 일상 대화나 궁금한 점 상담\n- 파일 관련 작업(등록된 Flow에 따라)\n\n원하시는 작업이나 궁금한 점을 말씀해 주시면 도와드릴 수 있습니다!",
+    "seconds": 46.37,
+    "usage": {
+      "completion_tokens": 90,
+      "prompt_tokens": 122,
+      "total_tokens": 212,
+      "prompt_tokens_details": {
+        "cached_tokens": 104
+      }
+    },
+    "timings": {
+      "cache_n": 104,
+      "prompt_n": 18,
+      "prompt_ms": 4273.689,
+      "prompt_per_token_ms": 237.4271666666667,
+      "prompt_per_second": 4.211817939957728,
+      "predicted_n": 90,
+      "predicted_ms": 42072.826,
+      "predicted_per_token_ms": 472.7283820224719,
+      "predicted_per_second": 2.115379651464344
+    },
+    "peak_cgroup_bytes": 610156544,
+    "minimum_available_bytes": 6686031872
+  },
+  {
+    "prompt": "취침 Flow 실행해줘",
+    "expected": "flow",
+    "passed": true,
+    "response": "{\"intent\":\"flow\",\"query\":\"sleep\",\"ext\":{},\"after\":null,\"before\":null,\"flow_id\":\"sleep\",\"answer\":\"\"}",
+    "seconds": 17.7,
+    "usage": {
+      "completion_tokens": 30,
+      "prompt_tokens": 116,
+      "total_tokens": 146,
+      "prompt_tokens_details": {
+        "cached_tokens": 104
+      }
+    },
+    "timings": {
+      "cache_n": 104,
+      "prompt_n": 12,
+      "prompt_ms": 2403.581,
+      "prompt_per_token_ms": 200.29841666666667,
+      "prompt_per_second": 4.992550698312226,
+      "predicted_n": 30,
+      "predicted_ms": 15251.166,
+      "predicted_per_token_ms": 525.9022758620689,
+      "predicted_per_second": 1.9014939579045955
+    },
+    "peak_cgroup_bytes": 638828544,
+    "minimum_available_bytes": 6679543808
+  }
+]
