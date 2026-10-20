@@ -59,3 +59,21 @@ Windows `scripts/deploy.py`는 git 추적 소스를 SFTP 전송하고 hash를 �
 Pi Chromium 시작 주소는 http://127.0.0.1:8080/panel 입니다. 업데이트 후 기존 창을 새로고침하면 전용 터치 UI가 적용됩니다. DSI는720×1280에270도 회전하여 가로1280×720으로 설정되어 있습니다. OS에서 인식되는 마이크가 필요하며, 원격 Chrome에서는 그 컴퓨터의 마이크를 사용합니다. 녹음은 Pi로 전송되고 처리 뒤 삭제됩니다. LAN IP의 HTTP에서는 브라우저 마이크가 제한되므로 ngrok HTTPS 또는 Pi localhost를 사용하세요.
 
 ‘음성 입력’은 전사 내용을 확인하고 보내며, ‘얼터 호출 대기’는 호출어와 요청을 함께 인식하면 챗봇으로 전달합니다. 최종 기기 실행 확인은 유지합니다. 처리 중에는 계속 듣지 않으며 6초 녹음과 전사를 반복합니다. 녹음 종료 버튼/호출 대기 끄기/페이지 숨김으로 마이크를 종료합니다. 소음 환경의 호출 오탐률은 검증되지 않았습니다.
+
+## 전원 복귀와 실행 파일
+
+1. Pi 부팅 시 alter, alter-llm, alter-ngrok, alter-oauth, smbd와 alter-recovery가 자동 실행됩니다. 모델 로딩에는 시간이 걸릴 수 있습니다.
+2. 확인하려면 프로젝트 루트의 Start-Alter.desktop을 실행합니다. 처음 파일 관리자에서 실행 여부를 물으면 실행을 선택합니다. start.sh --no-browser는 화면 없는 점검입니다.
+3. Windows에서는 D:\_rpi-agent\Start-Alter.cmd를 실행하면 SSH 인증 후 같은 점검을 수행합니다. 호스트 키 첫 확인은 실제 Pi 키와 대조하세요.
+4. `data/startup-status.json`의 checked_at과 각 ok 값을 확인합니다. 오래된 성공 파일만으로 이번 부팅 성공을 판단하지 마세요. systemctl status alter-recovery와 이번 부팅 journal도 확인합니다.
+5. SmartThings 재연결 안내가 나오면 대시보드 스마트홈에서 삼성 계정으로 로그인합니다. 계정 동의나 철회된 권한을 자동 우회할 수는 없습니다.
+
+정상 부팅 때는 수동 클릭 없이도 복구가 수행됩니다. 수동으로 stop한 서비스는 실행 파일에서 관리자 인증을 요구할 수 있습니다. 누락된 USB는 오프라인으로 표시하고, 손상된 DB는 자동 삭제하지 않습니다. 전원 차단으로 매체가 손상되면 이 실행 파일만으로 수리할 수 없습니다.
+
+## 외장하드 재연결 및 밝기
+
+드라이브 화면의 볼륨 ID는 파일시스템 UUID입니다. 같은 USB가 다른 마운트 폴더로 연결되어도 재등록 시 기존 root를 갱신하며 색인을 중복 생성하지 않습니다. 포맷/복제 시 UUID가 바뀌거나 충돌할 수 있습니다. 동일 UUID 장치 여러 개를 함께 연결하지 마세요.
+
+밝기 제어 상태: `systemctl --user status alter-display`. 중지: `systemctl --user stop alter-display`(밝기도 복원). 시작: `systemctl --user start alter-display`. 타이머는 입력 종류를 터치만으로 한정하지 않고 Wayland seat 전체의 무입력을 기준으로 합니다. USB 키보드/마우스/화면 공유 조작도 복원 및 타이머 초기화 대상입니다. data/display-brightness.json에 직전 밝기와 변경 시각을 기록합니다.
+
+서버의 HTTP 요청, 외부 PC 대시보드 조작, 파일 색인·검색·다운로드, 모델 생성, 카메라 스트리밍, SmartThings 통신은 Pi 화면 입력으로 계산하지 않습니다. 밝기 서비스는 서버의 요청량이나 CPU 사용률을 읽지 않으며 Wayland 입력 활동만 관찰합니다. Pi 화면 공유에서 실제 마우스나 키보드 입력을 보내는 경우는 Pi 화면 조작이므로 활동에 포함됩니다.

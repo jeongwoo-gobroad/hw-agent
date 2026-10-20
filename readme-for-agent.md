@@ -73,3 +73,19 @@ Flow는 실행 결과를 저장하고 실패 단계에서 멈춥니다. 물리 �
 브라우저 MediaRecorder로 한 번 최대12초, 호출 대기는6초씩 녹음합니다. STT는 전부 Pi에서 수행합니다. 호출어 검출은 한국어 전사 문자열에서 ‘얼터’ 변형을 확인하는 방식이며 전용 wake 모델은 아닙니다. 마이크가 없는 Pi는 버튼 오류 안내와 음성 파일 입력을 제공합니다. 실제 마이크 시험과 합성 파일 시험을 구분하세요.
 
 `static/icons.js`는 메뉴/동작 이름을 Lucide SVG에 매핑합니다. 동적으로 추가된 검색·기기·대화 버튼에도 적용하며 키보드 문자 키는 제외합니다. MutationObserver 작업 중 관찰을 끊어 자기 변경에 의한 반복을 방지합니다. SVG는 aria-hidden/currentColor이며 기존 텍스트 라벨이 접근성 이름입니다. 라이브러리 버전·라이선스는 vendor/README.md에 기록합니다. /panel 비인증 리디렉션은 /login?next=/panel, 로그인 스크립트는 허용된 /panel 값만 복귀 경로로 사용합니다.
+
+## 시작·부팅 복구
+
+최상위 start.sh는 서비스가 active/activating/reloading이면 그대로 두고 중지된 서비스만 sudo로 시작합니다. 새로운 무암호 sudo 권한은 부여하지 않습니다. Start-Alter.desktop은 Pi, Start-Alter.cmd는 Windows SSH 진입점입니다. scripts/install-startup.sh는 root-owned systemd unit을 설치·enable합니다.
+
+scripts/recover.py는 데이터 초기화(db.init)를 호출하지 않습니다. flock으로 부팅/수동 복구 중복을 막고, 웹/모델 health를 기다린 뒤 DB quick_check와 등록된 UUID만 마운트합니다. 기존 제한된 alter-disk helper를 재사용하고 임의 디스크는 건드리지 않습니다. UDisks가 먼저 다른 경로로 마운트하면 해당 경로를 사용하고 SMB 경로를 복원합니다. ngrok 로컬 터널 API와 공개 health를 모두 확인하며 저장된 토큰은 smartthings.devices/access_token 경로로 필요할 때 갱신합니다. 토큰은 출력하지 않습니다.
+
+종료0=성공,1=일시적/설정 오류,2=SmartThings 재로그인 필요. alter-recovery.service는 실패1을60초 후 재시도하며2는 자동 재시도하지 않습니다. 결과 JSON은 임시 파일+replace로 갱신됩니다. 핵심 서비스의 StartLimitIntervalSec=0은 장기 네트워크 장애 뒤에도 재시도가 정지되지 않게 합니다. 재시도 간격은 기존 RestartSec를 따릅니다. 복구는 원본 삭제/포맷/자격증명 교체를 수행하지 않습니다.
+
+## 볼륨 ID와 디스플레이 절전
+
+roots.relative_path와 UNIQUE(uuid,relative_path)가 등록의 영구 식별자입니다. path/mount는 현재 위치 캐시입니다. db.init에서 기존 스키마를 트랜잭션으로 옮기며 root ID와 files의 ID/root/상대 키를 보존합니다. 기존 중복 등록은 자동 삭제하지 않고 마이그레이션 오류로 중지합니다. 운영 DB 백업을 먼저 생성하세요. storage.device_for_uuid는 복제 UUID의 모호한 연결을 거부합니다. index scan은 오프라인 root를 건너뛰되 기존 색인을 보존하고 다른 root를 계속 처리합니다. 일부 root가 누락되면 전체 재색인 완료 시각을 갱신하지 않습니다.
+
+사용자 서비스 deploy/alter-display.service는 swayidle timeout300/resume으로 scripts/display_brightness.py를 호출합니다. 고정 대상은 실제 확인된 /sys/class/backlight/panel_backlight@1입니다. dim은 최초 현재 밝기를 저장하고1로 설정, restore는 저장값을1..max 범위로 복원합니다. flock과 atomic replace로 중복 dim과 상태 파일 경합을 방지합니다. 서비스 중단 시에도 원래 밝기를 복원합니다. 사용자 default.target enable 및 XDG autostart로 재로그인 후 실행합니다. 새로운 sudoers/그룹 권한은 만들지 않습니다. 화면 공유 픽셀은 백라이트 밝기를 반영하지 않으므로 sysfs 실제값도 검증해야 합니다.
+
+서버 요청 처리와 화면 활동은 독립적입니다. API/웹소켓/모델 토큰/색인/카메라/SmartThings 이벤트에서 밝기 복원이나 idle reset을 호출하지 않습니다. PC의 일반 대시보드 사용도 제외하며, Pi Wayland seat로 전달되는 터치·마우스·키보드(화면 공유 입력 포함)만 입력 활동입니다.

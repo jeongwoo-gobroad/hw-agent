@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Alter display idle control
+Exec=systemctl --user start alter-display.service
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

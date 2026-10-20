@@ -2,8 +2,7 @@
 Description=Stable ngrok HTTPS endpoint for authenticated Alter dashboard
 After=network-online.target alter.service
 Wants=network-online.target alter.service
-StartLimitIntervalSec=300
-StartLimitBurst=3
+StartLimitIntervalSec=0
 
 [Service]
 User=jeongwoo

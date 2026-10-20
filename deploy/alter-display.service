@@ -1,0 +1,14 @@
+[Unit]
+Description=Dim the built-in display after five minutes of inactivity
+StartLimitIntervalSec=0
+
+[Service]
+Environment=WAYLAND_DISPLAY=wayland-0
+ExecStartPre=/usr/bin/python3 /home/jeongwoo/hw-agent/scripts/display_brightness.py restore
+ExecStart=/usr/bin/swayidle -w timeout 300 '/usr/bin/python3 /home/jeongwoo/hw-agent/scripts/display_brightness.py dim' resume '/usr/bin/python3 /home/jeongwoo/hw-agent/scripts/display_brightness.py restore'
+ExecStopPost=/usr/bin/python3 /home/jeongwoo/hw-agent/scripts/display_brightness.py restore
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
