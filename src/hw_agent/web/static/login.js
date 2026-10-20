@@ -7,7 +7,7 @@ document.querySelector("#login").addEventListener("submit", async event => {
     const response = await fetch("/api/login", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
     const result = await response.json();
     if (!response.ok) throw new Error(result.detail);
-    location.href = "/";
+    location.href = new URLSearchParams(location.search).get("next") === "/panel" ? "/panel" : "/";
   } catch (error) { document.querySelector("#error").textContent = error.message; }
   finally { button.disabled = false; }
 });

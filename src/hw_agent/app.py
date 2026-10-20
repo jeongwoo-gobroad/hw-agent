@@ -16,7 +16,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 from . import auth, chat, config, db, flows, indexing, preview, smartthings, storage, oauth
 from .camera import camera
-from . import oauth_gateway
+from . import oauth_gateway, voice
 
 
 @asynccontextmanager
@@ -49,7 +49,7 @@ async def security(request: Request, call_next):
     if not public and current is None:
         if path.startswith("/api/"):
             return JSONResponse({"detail": "로그인이 필요합니다."}, status_code=401)
-        return RedirectResponse("/login", 303)
+        return RedirectResponse("/login?next=/panel" if path == "/panel" else "/login", 303)
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         origin = request.headers.get("origin")
         if origin and origin != str(request.base_url).rstrip("/"):
@@ -60,7 +60,7 @@ async def security(request: Request, call_next):
             length = int(request.headers.get("content-length", "0"))
         except ValueError:
             return JSONResponse({"detail": "Invalid content length"}, status_code=400)
-        if length > 65536:
+        if length > (2000100 if path == "/api/voice/transcribe" else 65536):
             return JSONResponse({"detail": "요청이 너무 큽니다."}, status_code=413)
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -486,3 +486,17 @@ def gestures(body: Gestures):
 
 
 app.mount("/static", StaticFiles(directory=WEB / "static"), name="static")
+
+
+class VoiceAudio(BaseModel):
+    audio: str = Field(min_length=1, max_length=2000000)
+
+
+@app.get("/api/voice")
+def voice_status():
+    return voice.status()
+
+
+@app.post("/api/voice/transcribe")
+def voice_transcribe(body: VoiceAudio):
+    return voice.transcribe(body.audio)
