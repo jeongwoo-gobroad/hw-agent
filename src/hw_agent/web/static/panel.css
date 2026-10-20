@@ -1,0 +1,31 @@
+
+.touch-panel aside {display:none}
+.touch-panel .workspace {margin-left:0;padding:20px 24px 100px;max-width:none}
+.touch-panel header {margin-bottom:20px}
+.touch-panel header h1 {font-size:28px}
+.touch-panel .panel-dock {position:fixed;bottom:0;left:0;right:0;display:flex;gap:10px;align-items:center;justify-content:center;padding:12px;background:var(--paper);border-top:1px solid var(--line);z-index:30}
+.panel-dock button,.panel-dock a {min-height:48px;min-width:100px;touch-action:manipulation}
+.panel-dock a {display:flex;align-items:center;justify-content:center;color:var(--ink)}
+.touch-panel .tiles {grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.touch-panel button {min-height:44px}
+.touch-panel .session-list {display:none}
+.touch-panel .chat-layout {display:block}
+.touch-panel .chat-main {height:calc(100dvh - 210px);min-height:240px}
+.touch-panel #messages {min-height:80px}
+.touch-panel #touch-keyboard {position:fixed;bottom:73px;left:0;right:0;z-index:25;background:var(--paper);padding:10px 20px;border-top:1px solid var(--line);box-shadow:0 -8px 30px #0002}
+.keyboard-head {display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.keyboard-head span {font-size:12px;color:var(--muted)}
+.touch-panel.keyboard-open .chat-main {height:calc(100dvh - 500px);margin-bottom:290px}
+.touch-panel.keyboard-open #chat .section-head {display:none}
+.touch-panel .simple-keyboard {background:var(--bg);color:var(--ink)}
+.touch-panel .simple-keyboard .hg-button {background:var(--paper);border-color:var(--line);height:42px;font-size:20px;box-shadow:none}
+.touch-panel .simple-keyboard .hg-button:active {background:var(--soft)}
+.touch-panel .simple-keyboard .hg-button-enter {background:var(--accent);color:var(--paper)}
+@media(max-height:650px){.touch-panel header .eyebrow,.touch-panel header .badge{display:none}.touch-panel header{margin-bottom:8px}.touch-panel .workspace{padding-top:8px}.touch-panel.keyboard-open .chat-main{height:210px;min-height:160px}.touch-panel .simple-keyboard .hg-button{height:34px}.touch-panel #touch-keyboard{padding:5px 10px}.keyboard-head{margin-bottom:3px}.keyboard-head strong{display:none}}
+@media(max-width:700px){.touch-panel .workspace{padding:12px 12px 90px}.panel-dock button,.panel-dock a{min-width:0;font-size:12px;padding:8px}.touch-panel .panel-dock{gap:6px}.keyboard-head strong{display:none}.touch-panel .simple-keyboard .hg-button{font-size:16px}.touch-panel .chat-main>.section-head>div{display:none}}
+
+.touch-panel.panel-history .session-list{display:block;max-height:200px;overflow:auto;margin-bottom:10px}.voice-file{font-size:13px;display:flex;align-items:center;gap:6px}.voice-file input{width:170px;padding:6px}.touch-panel .hg-button{color:var(--ink);padding:0}.touch-panel #notice{z-index:35}.touch-panel .simple-keyboard .hg-button-enter{color:var(--bg)}
+
+.panel-account{margin:0 0 12px;color:var(--muted);font-size:13px}.panel-account summary{cursor:pointer;padding:8px}.panel-account .card{margin-top:8px}.touch-panel #smart-devices{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}.touch-panel .device-toolbar{margin-top:12px}
+
+.touch-panel #notice{position:fixed;top:70px;right:24px;max-width:480px;margin:0;box-shadow:0 4px 20px #0002}

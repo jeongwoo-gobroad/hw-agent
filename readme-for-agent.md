@@ -63,3 +63,13 @@ Flow는 실행 결과를 저장하고 실패 단계에서 멈춥니다. 물리 �
 `web/static/stream.js`는 fetch 스트림과 UTF-8 청크 경계를 처리합니다. `theme.js`는 초기 시스템 설정 또는 localStorage 선택을 적용하고 라이트/다크 전환을 담당합니다. 색상은 style.css 변수로 관리합니다. app.js는 활성 대화, 생성 중 입력 잠금, 빈 상태, 파일 페이지 누적 로드, 카메라 상태별 버튼과 폴더 선택을 관리합니다. storage.devices는 파티션에 부모 모델명을 상속하여 드라이브 식별을 돕습니다.
 
 검증: tests/test_generation.py는 부분 문자열·다중 이벤트·취소를 검사합니다. tests/live_stream.py는 공개 URL에서 첫 delta와 완료 시각, 실제 로컬 모델 및 영구 저장을 검사합니다.
+
+## 터치 패널·음성 컴포넌트
+
+`web/static/panel.js`와 panel.css는 /panel에서만 활성화합니다. 대시보드의 인증·스마트홈·대화 API를 그대로 사용하며 큰 하단 메뉴, 키보드, 음성 수집을 제공합니다. simple-keyboard 3.8.196 / Hangul.js 0.2.6은 static/vendor에 라이선스와 함께 포함합니다. 한글 조합은 Hangul.disassemble/assemble을 사용합니다.
+
+`voice.py`는 whisper.cpp CLI를 격리된 임시 폴더에서 실행합니다. GET /api/voice는 준비 상태, POST /api/voice/transcribe는 {audio: base64}를 받고 {text, language, silent}를 반환합니다. 인증/CSRF 필수, 해당 경로만 요청 본문 한도를 2,000,100바이트로 확장합니다. 디코딩 후 1.5MB, ffmpeg15초/mono16kHz, 변환20초/추론90초 제한, 단일 요청 lock, 무음 RMS 필터를 적용합니다. 입력과 텍스트를 로그로 남기지 않습니다. WHISPER_BINARY/WHISPER_MODEL로 경로를 재정의할 수 있습니다. 모델/바이너리는 tools와 models에 두며 git에 넣지 않습니다.
+
+브라우저 MediaRecorder로 한 번 최대12초, 호출 대기는6초씩 녹음합니다. STT는 전부 Pi에서 수행합니다. 호출어 검출은 한국어 전사 문자열에서 ‘얼터’ 변형을 확인하는 방식이며 전용 wake 모델은 아닙니다. 마이크가 없는 Pi는 버튼 오류 안내와 음성 파일 입력을 제공합니다. 실제 마이크 시험과 합성 파일 시험을 구분하세요.
+
+`static/icons.js`는 메뉴/동작 이름을 Lucide SVG에 매핑합니다. 동적으로 추가된 검색·기기·대화 버튼에도 적용하며 키보드 문자 키는 제외합니다. MutationObserver 작업 중 관찰을 끊어 자기 변경에 의한 반복을 방지합니다. SVG는 aria-hidden/currentColor이며 기존 텍스트 라벨이 접근성 이름입니다. 라이브러리 버전·라이선스는 vendor/README.md에 기록합니다. /panel 비인증 리디렉션은 /login?next=/panel, 로그인 스크립트는 허용된 /panel 값만 복귀 경로로 사용합니다.

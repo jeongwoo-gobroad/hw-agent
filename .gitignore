@@ -12,3 +12,5 @@ recordings/
 *.sqlite*
 *.db
 private/
+
+tools/
