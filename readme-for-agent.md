@@ -89,3 +89,5 @@ roots.relative_path와 UNIQUE(uuid,relative_path)가 등록의 영구 식별자�
 사용자 서비스 deploy/alter-display.service는 swayidle timeout300/resume으로 scripts/display_brightness.py를 호출합니다. 고정 대상은 실제 확인된 /sys/class/backlight/panel_backlight@1입니다. dim은 최초 현재 밝기를 저장하고1로 설정, restore는 저장값을1..max 범위로 복원합니다. flock과 atomic replace로 중복 dim과 상태 파일 경합을 방지합니다. 서비스 중단 시에도 원래 밝기를 복원합니다. 사용자 default.target enable 및 XDG autostart로 재로그인 후 실행합니다. 새로운 sudoers/그룹 권한은 만들지 않습니다. 화면 공유 픽셀은 백라이트 밝기를 반영하지 않으므로 sysfs 실제값도 검증해야 합니다.
 
 서버 요청 처리와 화면 활동은 독립적입니다. API/웹소켓/모델 토큰/색인/카메라/SmartThings 이벤트에서 밝기 복원이나 idle reset을 호출하지 않습니다. PC의 일반 대시보드 사용도 제외하며, Pi Wayland seat로 전달되는 터치·마우스·키보드(화면 공유 입력 포함)만 입력 활동입니다.
+
+SMB/색인 선택 분리: app.js browse(path,target)는 index/share별 독립 컨테이너를 사용합니다. loadRoots는 SMB 폼을 변경하지 않습니다. roots 테이블은 검색 대상, state.shares는 공유 대상이며 API는 각각 독립입니다. recover.restore_storage는 roots와 shares의 UUID 합집합만 마운트합니다. 설치 시 wsdd2를 활성화하여 Windows WSD 검색을 지원합니다.
