@@ -6,7 +6,7 @@ import time
 import uuid
 import httpx
 from fastapi import HTTPException
-from . import db, indexing, smartthings
+from . import db, indexing, smartthings, generation
 from .config import LLM_URL, LLM_HEADERS
 
 generation_lock = threading.Lock()
@@ -38,7 +38,7 @@ def create(title="새 대화"):
     return {"id": identifier, "title": title}
 
 
-def respond(session_id, message):
+def respond(session_id, message, on_delta=None, cancelled=None):
     if not db.rows("SELECT id FROM sessions WHERE id=?", (session_id,)):
         raise HTTPException(404, "대화를 찾을 수 없습니다.")
     if not generation_lock.acquire(blocking=False):
@@ -79,14 +79,19 @@ def respond(session_id, message):
                       '. 등록 기기: ' + json.dumps(device_options, ensure_ascii=False) +
                       '. 현재 날짜: ' + time.strftime("%Y-%m-%d"))
             try:
-                r = httpx.post(LLM_URL + "/v1/chat/completions", headers=LLM_HEADERS, json={
+                payload = {
                     "model": "local", "messages": [{"role": "system", "content": prompt}] +
                     history[-2:] + [{"role": "user", "content": message[:1200]}],
                     "max_tokens": 300, "temperature": 0.1,
                     "chat_template_kwargs": {"enable_thinking": False},
-                    "response_format": {"type": "json_object"}}, timeout=180)
-                r.raise_for_status()
-                content = r.json()["choices"][0]["message"]["content"]
+                    "response_format": {"type": "json_object"}}
+                if on_delta:
+                    content = generation.stream_completion(payload, on_delta, cancelled)
+                else:
+                    r = httpx.post(LLM_URL + "/v1/chat/completions",
+                                   headers=LLM_HEADERS, json=payload, timeout=180)
+                    r.raise_for_status()
+                    content = r.json()["choices"][0]["message"]["content"]
                 plan = json.loads(content)
                 if not isinstance(plan, dict):
                     raise ValueError("Expected object")
@@ -126,6 +131,8 @@ def respond(session_id, message):
                 answer["proposed_command"] = {"device_id": candidate["id"], "capability": "switch", "command": command}
             else:
                 answer["text"] = "연결된 기기 또는 실행할 동작을 확인할 수 없습니다."
+        if cancelled is not None and cancelled.is_set():
+            raise HTTPException(499, "응답 생성을 중단했습니다.")
         with db.connect() as conn:
             conn.execute("INSERT INTO messages(session,role,content,created) VALUES(?,?,?,?)",
                          (session_id, "user", message, time.time()))

@@ -4,16 +4,16 @@
 
 검증 환경 Debian13 ARM64/Python3.13.5. `scripts/install.sh`는 apt의 python3-venv/python3-picamera2/ffmpeg/samba/smbclient/OpenBLAS/cmake/g++/curl 개발 헤더를 설치하고 system-site-packages venv를 구성합니다. HEIF 빌드가 필요하면 libheif-dev도 설치합니다. `requirements-pi.lock.txt`는 pip --local 스냅샷이며 OS 패키지까지 고정하지 않습니다.
 
-.env는 root 프로젝트에 두고 chmod600, data는700. 최소 DASHBOARD_USERNAME/DASHBOARD_PASSWORD/32자 이상 무작위 SESSION_SECRET이 필요합니다. 현재 HTTP 내부망이므로 SECURE_COOKIE=false입니다. HTTPS 대시보드로 전환하면 true로 바꾸세요. 서비스는 전체 인터페이스8080에 바인딩하며 인터넷 포트포워딩을 설정하지 않습니다.
+.env는 root 프로젝트에 두고 chmod600, data는700. 최소 DASHBOARD_USERNAME/DASHBOARD_PASSWORD/32자 이상 무작위 SESSION_SECRET이 필요합니다. 내부망 HTTP 호환을 위해 SECURE_COOKIE=false를 유지하지만 HTTPS 요청으로 발급되는 세션 쿠키는 코드에서 항상 Secure로 설정합니다. 서비스는 전체 인터페이스8080에 바인딩하며 인터넷 포트포워딩을 설정하지 않습니다. ngrok을 통해 외부 HTTPS 접근을 제공합니다. ALLOWED_HOSTS에 정확한 ngrok 호스트를 추가하며 Uvicorn은127.0.0.1에서 오는 proxy header만 신뢰합니다. 브라우저 Origin/CSRF 검증은 외부 HTTPS 기준으로 동작합니다. OAuth URL의 코드가 남지 않도록 access log는 끕니다.
 
 ## 서비스
 
 | 서비스 | 주소 | 메모리 상한 |
 |---|---|---|
-| alter | 내부망8080 | 1200MiB + swap256MiB |
+| alter | 내부망8080 + ngrok HTTPS | 1200MiB + swap256MiB |
 | alter-llm | 127.0.0.1:8081 | 5800MiB + swap128MiB |
 | alter-oauth | 127.0.0.1:8082 | 256MiB |
-| alter-ngrok | 고정 ngrok HTTPS→8082 | 192MiB |
+| alter-ngrok | 고정 ngrok HTTPS→8080 | 192MiB |
 
 `systemctl status alter alter-llm alter-oauth`, `journalctl -u alter`, `/health`로 확인합니다. 서비스 파일 변경은 root install 후 daemon-reload/restart. 별도 프로세스의 모델은 웹 재시작과 분리합니다. `.env` 변경 후 alter와 alter-oauth 모두 재시작해야 합니다.
 
@@ -49,3 +49,7 @@ deploy/alter-panel.desktop을 ~/.config/autostart에 복사합니다. Pi 로컬 
 `scripts/backup.py`는 SQLite backup API로 data/backups에 일관된 복사본을 만듭니다. 이 DB에도 대화와 암호화 토큰이 있으므로 비공개로 취급하세요. 복원에는 .env의 동일 SESSION_SECRET이 필요합니다. 녹화/원본/모델은 이 백업에 포함되지 않습니다. backup은 현재 기본 data 경로 전용입니다.
 
 Windows `scripts/deploy.py`는 git 추적 소스를 SFTP 전송하고 hash를 비교하며 SSH fingerprint를 고정합니다. 비밀번호는 getpass 입력입니다. 비공개 .env/data/models는 전송/커밋하지 않습니다. 서비스 재시작은 변경 범위에 맞춰 별도 수행합니다.
+
+## 대화 스트리밍과 테마
+
+대화창에서 생성되는 문장이 바로 표시됩니다. 중단 버튼은 연결을 종료하며 부분 응답은 보관하지 않습니다. 모델이 입력을 처리하는 중에는 다음 생성 청크까지 서버의 중단 처리가 늦어질 수 있습니다. 최종 결과를 받기 전에는 기기 실행 버튼이 나타나지 않습니다. 테마는 브라우저별로 저장되고 최초 방문 시 시스템 라이트/다크 설정을 따릅니다.
