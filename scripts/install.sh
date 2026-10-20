@@ -6,7 +6,8 @@ if [[ "$(id -un)" != jeongwoo || "$PWD" != /home/jeongwoo/hw-agent ]]; then
   exit 1
 fi
 sudo apt-get update
-sudo apt-get install -y python3-venv python3-picamera2 ffmpeg samba smbclient libopenblas-dev cmake g++ libcurl4-openssl-dev libheif-dev
+sudo apt-get install -y python3-venv python3-picamera2 ffmpeg samba smbclient wsdd2 libopenblas-dev cmake g++ libcurl4-openssl-dev libheif-dev
+sudo systemctl enable --now wsdd2
 python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -r requirements.txt
 test -f .env || { echo "Create .env from .env.example first." >&2; exit 1; }

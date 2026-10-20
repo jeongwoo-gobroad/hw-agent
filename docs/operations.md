@@ -77,3 +77,5 @@ Pi Chromium 시작 주소는 http://127.0.0.1:8080/panel 입니다. 업데이트
 밝기 제어 상태: `systemctl --user status alter-display`. 중지: `systemctl --user stop alter-display`(밝기도 복원). 시작: `systemctl --user start alter-display`. 타이머는 입력 종류를 터치만으로 한정하지 않고 Wayland seat 전체의 무입력을 기준으로 합니다. USB 키보드/마우스/화면 공유 조작도 복원 및 타이머 초기화 대상입니다. data/display-brightness.json에 직전 밝기와 변경 시각을 기록합니다.
 
 서버의 HTTP 요청, 외부 PC 대시보드 조작, 파일 색인·검색·다운로드, 모델 생성, 카메라 스트리밍, SmartThings 통신은 Pi 화면 입력으로 계산하지 않습니다. 밝기 서비스는 서버의 요청량이나 CPU 사용률을 읽지 않으며 Wayland 입력 활동만 관찰합니다. Pi 화면 공유에서 실제 마우스나 키보드 입력을 보내는 경우는 Pi 화면 조작이므로 활동에 포함됩니다.
+
+Windows SMB 접속: 파일 탐색기 주소창에 `\\192.168.0.44` 또는 `\\192.168.0.44\Alter-공유이름`을 입력합니다. Windows 계정 대신 SMB 사용자 jeongwoo와 설치 시 지정한 Samba 비밀번호로 인증합니다. 웹 로그인과 별도 인증입니다. 네트워크 목록 검색을 위해 `sudo apt-get install wsdd2` 및 `sudo systemctl enable --now wsdd2`를 적용했습니다. Windows 네트워크가 Private이고 네트워크 검색이 허용되어야 합니다. SMB1이나 게스트 접근은 활성화하지 않습니다. wsdd2 공식 설명: https://manpages.debian.org/bookworm/wsdd2/wsdd2.8.en.html . 직접 UNC 접근 성공과 탐색기 자동 검색 표시는 별도로 판단하세요.

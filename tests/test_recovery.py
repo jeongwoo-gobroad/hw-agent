@@ -20,6 +20,22 @@ spec.loader.exec_module(recovery)
 
 
 class RecoveryTests(unittest.TestCase):
+    def setUp(self):
+        db.init()
+        with db.connect() as connection:
+            connection.execute("DELETE FROM roots")
+        db.set_state("shares", "{}")
+
+    def test_mounts_share_only_volume_without_index_root(self):
+        db.set_state("shares", '{"files":{"uuid":"share-only"}}')
+        devices = [{"uuid": "share-only", "mount": None, "path": "/dev/sdc1"}]
+        with patch.object(recovery.storage, "devices", return_value=devices), \
+             patch.object(recovery.storage, "restore_shares"), \
+             patch.object(recovery.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as run:
+            self.assertEqual(recovery.restore_storage(), {"registered": 1, "missing": 0})
+            self.assertIn("/dev/sdc1", run.call_args.kwargs["input"])
+        self.assertEqual(db.rows("SELECT * FROM roots"), [])
+
     def test_mounts_only_registered_uuid(self):
         db.init()
         with db.connect() as connection:

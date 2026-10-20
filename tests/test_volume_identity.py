@@ -14,6 +14,22 @@ from hw_agent import db, storage
 
 
 class VolumeIdentity(unittest.TestCase):
+    def test_share_and_index_registrations_are_independent(self):
+        from types import SimpleNamespace
+        import json
+        db.set_state("shares", "{}")
+        with patch.object(storage, "devices", return_value=[self.device]), \
+             patch.object(storage.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="ok")):
+            storage.smb("set", self.first / "docs", "OnlyShare")
+            self.assertEqual(db.rows("SELECT * FROM roots"), [])
+            storage.add_root(self.first / "docs")
+            storage.smb("remove", self.first / "docs", "OnlyShare")
+            self.assertEqual(len(db.rows("SELECT * FROM roots")), 1)
+            storage.smb("set", self.first / "docs", "OnlyShare")
+            with db.connect() as connection:
+                connection.execute("DELETE FROM roots")
+            self.assertIn("OnlyShare", json.loads(db.state("shares")))
+
     def setUp(self):
         db.init()
         with db.connect() as connection:
