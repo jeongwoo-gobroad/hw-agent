@@ -79,3 +79,5 @@ Pi Chromium 시작 주소는 http://127.0.0.1:8080/panel 입니다. 업데이트
 서버의 HTTP 요청, 외부 PC 대시보드 조작, 파일 색인·검색·다운로드, 모델 생성, 카메라 스트리밍, SmartThings 통신은 Pi 화면 입력으로 계산하지 않습니다. 밝기 서비스는 서버의 요청량이나 CPU 사용률을 읽지 않으며 Wayland 입력 활동만 관찰합니다. Pi 화면 공유에서 실제 마우스나 키보드 입력을 보내는 경우는 Pi 화면 조작이므로 활동에 포함됩니다.
 
 Windows SMB 접속: 파일 탐색기 주소창에 `\\192.168.0.44` 또는 `\\192.168.0.44\Alter-공유이름`을 입력합니다. Windows 계정 대신 SMB 사용자 jeongwoo와 설치 시 지정한 Samba 비밀번호로 인증합니다. 웹 로그인과 별도 인증입니다. 네트워크 목록 검색을 위해 `sudo apt-get install wsdd2` 및 `sudo systemctl enable --now wsdd2`를 적용했습니다. Windows 네트워크가 Private이고 네트워크 검색이 허용되어야 합니다. SMB1이나 게스트 접근은 활성화하지 않습니다. wsdd2 공식 설명: https://manpages.debian.org/bookworm/wsdd2/wsdd2.8.en.html . 직접 UNC 접근 성공과 탐색기 자동 검색 표시는 별도로 판단하세요.
+
+NTFS 압축과 쓰기 진단: SMB read only, 마운트 rw/ro, 소유권, 기존 연결, 개별 파일 속성을 분리해 확인합니다. 폴더 압축 속성만으로 쓰기 불가를 단정하지 않습니다. NTFS3는 일반 NTFS 압축 읽기/쓰기를 지원합니다(https://docs.kernel.org/filesystems/ntfs3.html). Windows에서 압축 해제는 해당 파일/폴더 속성의 고급 압축 옵션으로 가능하지만 범위를 먼저 확정하고 여유 공간을 확인해야 합니다. 접근 금지 하위 폴더가 있는 볼륨에 전체 재귀 해제를 실행하지 않습니다. 기존 공유 수정은 목록의 설정 변경→읽기 전용 변경→공유 적용 순서입니다. 기존 Windows 연결은 탐색기 창을 닫고 공유 주소로 다시 연결해야 할 수 있습니다.

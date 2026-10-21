@@ -16,3 +16,4 @@ LLM_URL = os.getenv("LLM_BASE_URL", "http://127.0.0.1:8081")
 LLM_KEY_FILE = DATA / "llm-api-key"
 LLM_HEADERS = {"Authorization": "Bearer " + LLM_KEY_FILE.read_text().strip()} if LLM_KEY_FILE.exists() else {}
 SECURE_COOKIE = os.getenv("SECURE_COOKIE", "false").lower() == "true"
+EXCLUDED_DIRECTORY_NAMES = {name.strip().casefold() for name in os.getenv("EXCLUDED_DIRECTORY_NAMES", "").split(",") if name.strip()}

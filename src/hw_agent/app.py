@@ -195,12 +195,14 @@ def add_root(body: Root):
 
 @app.delete("/api/roots/{identifier}")
 def delete_root(identifier: int):
-    if indexing.status["running"] or camera.recording:
-        raise HTTPException(409, "색인 또는 녹화 종료 후 폴더를 해제하세요.")
+    roots = db.rows("SELECT * FROM roots WHERE id=?", (identifier,))
+    if camera.recording and roots and camera.record_dir and Path(camera.record_dir).is_relative_to(roots[0]["path"]):
+        raise HTTPException(409, "이 폴더에 녹화 중입니다. 녹화 종료 후 해제하세요.")
     with db.connect() as conn:
         conn.execute("DELETE FROM search WHERE rowid IN (SELECT id FROM files WHERE root=?)", (identifier,))
         conn.execute("DELETE FROM files WHERE root=?", (identifier,))
         conn.execute("DELETE FROM roots WHERE id=?", (identifier,))
+        conn.execute("DELETE FROM staging WHERE root=?", (identifier,))
     return {"ok": True}
 
 
@@ -246,7 +248,7 @@ def share(body: Share):
 
 
 @app.delete("/api/shares/{name}")
-def unshare(name: str, path: str):
+def unshare(name: str, path: str = ""):
     return storage.smb("remove", path, name)
 
 

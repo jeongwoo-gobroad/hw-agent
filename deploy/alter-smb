@@ -13,25 +13,25 @@ def main():
     name = data["name"]
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", name):
         raise ValueError("Invalid share name")
-    path = Path(data["path"]).resolve(strict=True)
-    if any(c in str(path) for c in "\n\r%[]"):
-        raise ValueError("Invalid path")
-    tree = json.loads(subprocess.check_output(
-        ["/usr/bin/lsblk", "-J", "-o", "NAME,TRAN,MOUNTPOINTS"], text=True))
-    def mounts(items, transport=None):
-        for item in items:
-            tran = item.get("tran") or transport
-            if tran == "usb" or item["name"].startswith("nvme"):
-                yield from (m for m in item.get("mountpoints", []) if m and m != "/")
-            yield from mounts(item.get("children", []), tran)
-    if not path.is_dir() or not any(path.is_relative_to(Path(m).resolve()) for m in mounts(tree["blockdevices"])):
-        raise ValueError("Only mounted external storage can be shared")
     folder = Path("/etc/samba/alter.d")
     folder.mkdir(mode=0o755, exist_ok=True)
     target = folder / (name + ".conf")
     if data["action"] == "remove":
         target.unlink(missing_ok=True)
     elif data["action"] == "set":
+        path = Path(data["path"]).resolve(strict=True)
+        if any(c in str(path) for c in "\n\r%[]"):
+            raise ValueError("Invalid path")
+        tree = json.loads(subprocess.check_output(
+            ["/usr/bin/lsblk", "-J", "-o", "NAME,TRAN,MOUNTPOINTS"], text=True))
+        def mounts(items, transport=None):
+            for item in items:
+                tran = item.get("tran") or transport
+                if tran == "usb" or item["name"].startswith("nvme"):
+                    yield from (m for m in item.get("mountpoints", []) if m and m != "/")
+                yield from mounts(item.get("children", []), tran)
+        if not path.is_dir() or not any(path.is_relative_to(Path(m).resolve()) for m in mounts(tree["blockdevices"])):
+            raise ValueError("Only mounted external storage can be shared")
         text = (f"[Alter-{name}]\npath = {path}\nvalid users = jeongwoo\n"
                 f"read only = {'yes' if data.get('readonly', True) else 'no'}\n"
                 "guest ok = no\nfollow symlinks = no\nwide links = no\n"
