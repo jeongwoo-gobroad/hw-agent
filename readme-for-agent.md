@@ -91,3 +91,5 @@ roots.relative_path와 UNIQUE(uuid,relative_path)가 등록의 영구 식별자�
 서버 요청 처리와 화면 활동은 독립적입니다. API/웹소켓/모델 토큰/색인/카메라/SmartThings 이벤트에서 밝기 복원이나 idle reset을 호출하지 않습니다. PC의 일반 대시보드 사용도 제외하며, Pi Wayland seat로 전달되는 터치·마우스·키보드(화면 공유 입력 포함)만 입력 활동입니다.
 
 SMB/색인 선택 분리: app.js browse(path,target)는 index/share별 독립 컨테이너를 사용합니다. loadRoots는 SMB 폼을 변경하지 않습니다. roots 테이블은 검색 대상, state.shares는 공유 대상이며 API는 각각 독립입니다. recover.restore_storage는 roots와 shares의 UUID 합집합만 마운트합니다. 설치 시 wsdd2를 활성화하여 Windows WSD 검색을 지원합니다.
+
+오프라인 해제: SMB remove는 이름 검증 후 설정 파일만 제거하며 external_path/lsblk를 호출하지 않습니다. DELETE shares의 path는 하위 호환용 선택 인자입니다. roots 삭제는 다른 색인 작업 때문에 차단하지 않습니다. scanner는 각 디렉터리 및 staging 저장/최종 게시 전에 root 존재를 확인하며, 저장/게시 검사는 BEGIN IMMEDIATE로 삭제와 직렬화합니다. 해당 root에 카메라 녹화 중이면 삭제를 차단합니다. EXCLUDED_DIRECTORY_NAMES는 casefold 폴더명 집합으로 resolve 및 os.walk 하강 전에 차단합니다. 배포 장비의 금지 이름은 private .env에서 관리하며 진단에서 해당 하위 경로를 순회하면 안 됩니다.

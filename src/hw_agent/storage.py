@@ -4,7 +4,7 @@ from pathlib import Path
 import shutil
 import subprocess
 from fastapi import HTTPException
-from . import db
+from . import db, config
 
 
 def devices():
@@ -39,8 +39,19 @@ def device_for_uuid(identifier, listing=None):
     return matches[0] if matches else None
 
 
+def excluded(path):
+    return any(part.casefold() in config.EXCLUDED_DIRECTORY_NAMES for part in Path(path).parts)
+
+
+def check_path(path):
+    if excluded(path):
+        raise HTTPException(403, "접근 제외 경로입니다.")
+
+
 def external_path(path):
+    check_path(path)
     p = Path(path).resolve(strict=True)
+    check_path(p)
     listing = devices()
     for device in listing:
         if device["mount"] and p.is_relative_to(Path(device["mount"]).resolve()):
@@ -65,6 +76,7 @@ def add_root(path):
 
 
 def root_path(root):
+    check_path(root["path"])
     device = device_for_uuid(root["uuid"])
     if device and device["mount"]:
         relative = Path(root.get("relative_path") or Path(root["path"]).relative_to(root["mount"]))
@@ -90,7 +102,10 @@ def safe_file(file_id):
     if not roots:
         raise HTTPException(403, "등록이 해제된 폴더입니다.")
     base = root_path(roots[0])
-    p = (base / record["path"].split("\n", 1)[1]).resolve(strict=True)
+    candidate = base / record["path"].split("\n", 1)[1]
+    check_path(candidate)
+    p = candidate.resolve(strict=True)
+    check_path(p)
     if not p.is_relative_to(base) or not p.is_file():
         raise HTTPException(403, "허용 폴더 밖의 파일입니다.")
     return p, record
@@ -99,13 +114,15 @@ def safe_file(file_id):
 def folders(path):
     p, device = external_path(path)
     return {"path": str(p), "mount": device["mount"],
-            "children": sorted([str(x) for x in p.iterdir() if x.is_dir() and not x.is_symlink()
+            "children": sorted([str(x) for x in p.iterdir() if not excluded(x) and x.is_dir() and not x.is_symlink()
                                 and not x.name.startswith(".")])[:500]}
 
 
 def smb(action, path, name, readonly=True):
-    p, device = external_path(path)
-    payload = json.dumps({"action": action, "path": str(p), "name": name, "readonly": readonly})
+    if action not in {"set", "remove"}:
+        raise HTTPException(400, "지원하지 않는 공유 작업입니다.")
+    p, device = external_path(path) if action == "set" else (None, None)
+    payload = json.dumps({"action": action, "path": str(p) if p else "", "name": name, "readonly": readonly})
     result = subprocess.run(["sudo", "-n", "/usr/local/sbin/alter-smb"], input=payload,
                             capture_output=True, text=True, timeout=20)
     if result.returncode:

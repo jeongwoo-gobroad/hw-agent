@@ -31,6 +31,40 @@ class Boundaries(unittest.TestCase):
     def tearDown(self):
         self.patch.stop()
 
+    def test_excluded_directory_is_not_walked(self):
+        blocked = self.folder / "private-test"
+        blocked.mkdir()
+        (blocked / "secret.txt").write_text("must not extract")
+        real_walk = os.walk
+        entered = []
+        def walk(*args, **kwargs):
+            for entry in real_walk(*args, **kwargs):
+                entered.append(entry[0])
+                yield entry
+        with patch.object(config, "EXCLUDED_DIRECTORY_NAMES", {"private-test"}), patch.object(indexing.os, "walk", side_effect=walk):
+            indexing.scan()
+            self.assertNotIn(str(blocked), entered)
+            self.assertEqual(db.rows("SELECT id FROM files"), [])
+            with self.assertRaises(HTTPException):
+                storage.external_path(blocked / "missing.txt")
+
+    def test_unregister_during_extraction_does_not_republish(self):
+        (self.folder / "sample.txt").write_text("test")
+        def extract(*args, **kwargs):
+            with db.connect() as conn:
+                conn.execute("DELETE FROM roots WHERE id=?", (self.root["id"],))
+            return SimpleNamespace(stdout='{"text":"test","status":"ok"}')
+        with patch.object(indexing.subprocess, "run", side_effect=extract):
+            indexing.scan()
+        self.assertEqual(db.rows("SELECT id FROM files"), [])
+        self.assertEqual(db.rows("SELECT root FROM staging"), [])
+
+    def test_offline_share_remove_never_resolves_folder(self):
+        db.set_state("shares", '{"Offline":{"uuid":"gone"}}')
+        with patch.object(storage, "external_path", side_effect=AssertionError("must not access disk")), patch.object(storage.subprocess, "run", return_value=SimpleNamespace(returncode=0,stdout="removed")):
+            storage.smb("remove", "/missing/folder", "Offline")
+        self.assertEqual(json.loads(db.state("shares")), {})
+
     def test_explicit_search_filters_override_model_omission(self):
         from datetime import date
         class Clock(date):

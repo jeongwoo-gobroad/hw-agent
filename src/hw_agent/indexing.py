@@ -40,7 +40,7 @@ def scan():
             try:
                 base = storage.root_path(root)
             except HTTPException as error:
-                if error.status_code != 409:
+                if error.status_code not in {403, 409}:
                     raise
                 status["error"] = error.detail
                 complete = False
@@ -48,12 +48,14 @@ def scan():
             with db.connect() as conn:
                 conn.execute("DELETE FROM staging WHERE root=?", (root["id"],))
             for directory, dirs, names in os.walk(base, followlinks=False):
-                dirs[:] = [d for d in dirs if not d.startswith(".") and not (Path(directory)/d).is_symlink()]
+                dirs[:] = [d for d in dirs if not d.startswith(".") and not storage.excluded(Path(directory)/d) and not (Path(directory)/d).is_symlink()]
+                if not db.rows("SELECT id FROM roots WHERE id=?", (root["id"],)):
+                    break
                 for name in names:
                     if stop_event.is_set():
                         return
                     p = Path(directory) / name
-                    if p.is_symlink() or name.startswith("."):
+                    if storage.excluded(p) or p.is_symlink() or name.startswith("."):
                         continue
                     st = p.stat()
                     key = f"{root['id']}\n{p.relative_to(base)}"
@@ -72,12 +74,20 @@ def scan():
                     record = (root["id"], key, name, p.suffix.lower(), mimetypes.guess_type(name)[0] or "application/octet-stream",
                               st.st_size, st.st_mtime, getattr(st, "st_birthtime", None), text, extraction, generation)
                     with db.connect() as conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        if not conn.execute("SELECT id FROM roots WHERE id=?", (root["id"],)).fetchone():
+                            break
                         conn.execute("INSERT INTO staging VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                                      (*record, tokens(name), tokens(key), tokens(text)))
                     status["files"] += 1
+            if not db.rows("SELECT id FROM roots WHERE id=?", (root["id"],)):
+                continue
             # 드라이브가 사라지면 기존 색인을 지우지 않는다.
             storage.root_path(root)
             with db.connect() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                if not conn.execute("SELECT id FROM roots WHERE id=?", (root["id"],)).fetchone():
+                    continue
                 conn.execute("""INSERT INTO files(root,path,name,ext,mime,size,modified,created,text,extraction,seen)
                       SELECT root,path,name,ext,mime,size,modified,created,text,extraction,seen FROM staging WHERE root=?
                       ON CONFLICT(path) DO UPDATE SET
