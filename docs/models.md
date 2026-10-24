@@ -20,3 +20,14 @@
 - [Google GestureRecognizer](https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task): `97952348cf6a6a4915c2ea1496b4b37ebabc50cbbf80571435643c455f2b0482`.
 
 모델은 외부 양자화 배포본이며 자체 학습/검증된 공식 양자화라는 의미가 아닙니다. 다운로드 재현 시 리비전과 로컬 해시를 비교하고 각 모델 라이선스를 따르세요. 원시 결과: benchmark-qwen35-4b.json, benchmark-kanana15-8b.json, benchmark-qwen35-9b.json.
+
+
+## 상시 감지 모델 (2026-10-24)
+
+기존 GestureRecognizer(약8MB)와 [BlazeFace Short Range](https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite)(약225KB)를 동시에 적재합니다. BlazeFace SHA256: `b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f`. 재현 설치는 scripts/install-vision.py입니다. Python 의존성 mediapipe==1.1.1을 재사용하며 별도 학습 런타임은 추가하지 않습니다.
+
+[MediaPipe 공식 손동작 목록](https://developers.google.com/edge/api/mediapipe/js/tasks-vision.gesturerecognizeroptions)에 요청한 다섯 동작이 모두 포함됩니다. [BlazeFace 공식 모델 설명](https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/face_detection.md)은 근거리 모델을 약2m 이내에 권장합니다. 이 기능은 얼굴 검출이며 얼굴 신원 인식이나 보안 인증용이 아닙니다.
+
+이번 동시 부하 시험부터 Qwen3.5-4B-Q4_K_M의 문맥을4096으로 설정했습니다. 2048개 출력 토큰 외에 입력을 수용하기 위한 것으로, 위 초기 비교의2048문맥 기록과 구분합니다. PC GPU는 사용하지 않습니다. 기존 모델이 사용 가능하고 메모리 시험을 통과하면 YOLO26x 학습 조건은 성립하지 않습니다.
+
+사진 관리 모델: CLIP ViT-B/32 ONNX int8 + OpenCV YuNet/SFace를 별도 사진 작업자에서 CPU로 실행합니다. 설치 리비전과 SHA256은 `scripts/install-photo-models.py`, 선택 이유·분류 기준·오류 수정·범위는 [photos.md](photos.md)를 참조하세요. 얼굴 사진은 외부로 보내지 않습니다.

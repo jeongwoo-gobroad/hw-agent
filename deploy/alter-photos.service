@@ -1,0 +1,23 @@
+[Unit]
+Description=Alter private photo library worker
+After=alter.service
+
+[Service]
+User=jeongwoo
+Group=jeongwoo
+WorkingDirectory=/home/jeongwoo/hw-agent
+Environment=PYTHONPATH=/home/jeongwoo/hw-agent/src
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=OMP_NUM_THREADS=1
+ExecStart=/home/jeongwoo/hw-agent/.venv/bin/python -m hw_agent.photo_worker
+Restart=on-failure
+RestartSec=10
+Nice=10
+CPUQuota=100%
+MemoryMax=1200M
+MemorySwapMax=128M
+UMask=0077
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

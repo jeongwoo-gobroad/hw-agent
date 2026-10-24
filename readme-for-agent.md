@@ -35,7 +35,7 @@ README.md는 실제 제공 기능과 사용자 동선, docs/acceptance.md는 검
 
 추출기는 별도 Python subprocess로 실행하며 입력/압축 해제/메모리/시간을 제한합니다. staging 테이블의 완성된 루트만 활성 색인과 FTS에 반영합니다. 기존 파일 원문을 삭제하는 로직을 색인 보존기간과 혼동하지 마세요. 추출 알고리즘 변경 시 EXTRACTOR_VERSION을 올려 기존 내용도 재추출합니다.
 
-LLM은 별도 llama-server 프로세스입니다. 대화는 전체 저장하지만 현재 추론에는 최근 두 메시지(각 250자)와 최대 1200자 요청을 전달합니다. 모델별 2048 context 제약을 고려한 제한이며 장기 기억 요약 기능은 없습니다. 모델 실패 시 keyword_fallback을 명시합니다. 파일/기기/Flow의 실제 실행 권한을 모델에 맡기지 않고, UI에서 확인 후 API가 재검증합니다.
+LLM은 별도 llama-server 프로세스입니다. 대화는 전체 저장하지만 현재 추론에는 최근 두 메시지(각 250자)와 최대 1200자 요청을 전달합니다. 초기 2048 context 설정을 고려한 제한이며 장기 기억 요약 기능은 없습니다. 모델 실패 시 keyword_fallback을 명시합니다. 파일/기기/Flow의 실제 실행 권한을 모델에 맡기지 않고, UI에서 확인 후 API가 재검증합니다.
 
 OAuth callback 서버는 db.init을 호출하지 않습니다. 그렇지 않으면 독립 프로세스 시작 때 웹에서 실행 중인 Flow가 interrupted로 바뀝니다. 일회용 refresh token 때문에 웹/콜백 양쪽은 동일 파일 flock을 사용합니다. SESSION_SECRET 교체는 기존 로그인과 암호화 토큰에 영향을 줍니다. 토큰은 복호화한 값을 API 응답/로그에 넣지 마세요.
 
@@ -93,3 +93,26 @@ roots.relative_path와 UNIQUE(uuid,relative_path)가 등록의 영구 식별자�
 SMB/색인 선택 분리: app.js browse(path,target)는 index/share별 독립 컨테이너를 사용합니다. loadRoots는 SMB 폼을 변경하지 않습니다. roots 테이블은 검색 대상, state.shares는 공유 대상이며 API는 각각 독립입니다. recover.restore_storage는 roots와 shares의 UUID 합집합만 마운트합니다. 설치 시 wsdd2를 활성화하여 Windows WSD 검색을 지원합니다.
 
 오프라인 해제: SMB remove는 이름 검증 후 설정 파일만 제거하며 external_path/lsblk를 호출하지 않습니다. DELETE shares의 path는 하위 호환용 선택 인자입니다. roots 삭제는 다른 색인 작업 때문에 차단하지 않습니다. scanner는 각 디렉터리 및 staging 저장/최종 게시 전에 root 존재를 확인하며, 저장/게시 검사는 BEGIN IMMEDIATE로 삭제와 직렬화합니다. 해당 root에 카메라 녹화 중이면 삭제를 차단합니다. EXCLUDED_DIRECTORY_NAMES는 casefold 폴더명 집합으로 resolve 및 os.walk 하강 전에 차단합니다. 배포 장비의 금지 이름은 private .env에서 관리하며 진단에서 해당 하위 경로를 순회하면 안 됩니다.
+
+
+## 상시 감지 구조
+
+- motion.py: MediaPipe GestureRecognizer/BlazeFace 모델을 한 번 로드하고 카메라 프레임 하나를 두 모델에 전달합니다. 두 모델을 메모리에 함께 유지하며 프레임 내 추론은 순차 실행해 CPU 경합을 줄입니다. PresenceGate가 여섯 감지 종류의 hold/release/cooldown/repeat 상태를 독립 관리합니다. 신뢰도 기준은0.7입니다. Frame timestamp는 monotonic, UI 기록은 wall clock입니다.
+- camera.py: Picamera2를 단독 소유하며 640×480·10fps 촬영, 감지는 약0.3초 이상 간격입니다. 기존 제스처 API와 상시 감지는 같은 손동작 모델 인스턴스를 공유합니다. 상시 감지 활성 시 이전 제스처 실행은 비활성화합니다. 별도 카메라 프로세스를 추가하지 않습니다.
+- GET/POST /api/motion: enabled, mappings(감지 키→Flow ID 또는 빈 문자열), rules(hold_seconds, release_seconds, repeat_seconds, repeat)를 관리합니다. 알 수 없는 감지 키, 시간 범위, 활성화 시 없는 Flow를 거부합니다. 인증·CSRF는 기존 미들웨어를 그대로 적용합니다.
+- DB state.motion_config: 활성 여부·매핑·여섯 규칙을 보관합니다. lifespan에서 복원하며 모델/카메라 실패는 UI error로 노출합니다. 정상 프로세스 종료는 enabled 저장값을 바꾸지 않습니다.
+- dispatch_lock: 감지 기원 Flow는 최대1개만 실행합니다. 겹치는 이벤트는 skipped_busy입니다. Flow 자체의 중복/쿨다운/기기 검증도 유지합니다. 영상·얼굴 임베딩·신원 데이터는 저장하지 않습니다.
+- scripts/verify-motion-load.py: 실제 카메라의 두 모델과 llama.cpp 2048 generated tokens를 함께 실행하고 cgroup memory.events/PID/최대사용량/가용메모리를 data/motion-load-report.json에 기록합니다. 모델 출력 본문은 저장하지 않습니다. EOS 무시와4096문맥은 완료 토큰 수 확인용입니다. 일반 대화 출력 제한을 무조건2048로 늘리는 변경은 아닙니다.
+- tests/test_motion.py, tests/live_motion.py, tests/vision_fixtures.py: 유지/재진입/반복/동시실행, 인증 API/실제 카메라, 공식 양성 표본과 음성 표본을 각각 검사합니다. 표본 성공은 실제 사용자의 여섯 동작 정확도 측정과 구분합니다.
+
+repeat_seconds는 실행 시작 간격이 아니라 Flow 완료 후 최소 대기입니다. 비동기 run 종료 시 해당 gate.last_fire를 monotonic으로 갱신해 Flow 자체의3초 쿨다운보다 먼저 재시도하지 않습니다.
+
+## 사진 보관함 컴포넌트
+
+- `photos.py`: 독립 photo_roots UUID 등록·안전한 원본 해석·사진/앨범/사람 검색·수정 API. 일반 roots/SMB를 변경하지 않는다.
+- `photo_worker.py`: 별도 systemd 프로세스의 10분 주기 파일 발견, ExifTool 촬영일·Live 연결, 증분 분류, 체크포인트 진행률. 작업 자식 종료로 모델 메모리 반환.
+- `photo_models.py`: CLIP ONNX int8 다중 주제 + YuNet/SFace 특징 추출. PC GPU 및 원격 추론 없음.
+- `resources.py`: /proc CPU/RAM 차분과 지원되는 DRM GPU 카운터. 미지원값은 null.
+- `web/static/photos.js`: 보관함/사람들/별도 폴더 메뉴·검색·미디어·수동 수정. 공통 status 5초 polling으로 진행률과 처리된 썸네일 갱신.
+- `deploy/alter-photos.service`, `scripts/install-photo-models.py`: 독립 자원 제한과 리비전/SHA256 고정 모델 설치.
+- 상세 DB·API·제한·검증은 [docs/photos.md](docs/photos.md). 모델/문서 변경 시 함께 갱신한다. 사진 DB/얼굴 특징/이름/시험 이미지/원본은 Git에 넣지 않는다.

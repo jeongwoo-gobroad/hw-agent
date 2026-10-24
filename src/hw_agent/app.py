@@ -16,23 +16,38 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 from . import auth, chat, config, db, flows, indexing, preview, smartthings, storage, oauth
 from .camera import camera
+from .motion import motion
 from . import oauth_gateway, voice
+from . import photos, resources
 
 
 @asynccontextmanager
 async def lifespan(app):
     db.init()
+    photos.init()
     oauth.initialize()
     indexing.stop_event.clear()
     worker = threading.Thread(target=indexing.worker, daemon=True)
     worker.start()
     threading.Thread(target=oauth.refresh_worker,args=(indexing.stop_event,),daemon=True).start()
+    saved_motion = json.loads(db.state("motion_config", "{}"))
+    if not saved_motion.get("enabled"):
+        motion.configure(False, saved_motion.get("mappings", {}), saved_motion.get("rules", {}))
+    if saved_motion.get("enabled"):
+        try:
+            camera.start()
+            motion.configure(True, saved_motion.get("mappings", {}), saved_motion.get("rules", {}))
+        except Exception as exc:
+            motion.error = str(getattr(exc, "detail", type(exc).__name__))
     yield
     indexing.stop_event.set()
-    camera.stop()
+    # 종료 시 저장된 상시 감지 설정은 유지한다.
+    camera.stop(persist=False)
+    motion.close()
 
 
 app = FastAPI(title="Alter", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+app.include_router(photos.router)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=__import__("os").getenv(
     "ALLOWED_HOSTS", "127.0.0.1,localhost,192.168.0.44,geb-v1,geb-v1.local").split(","))
 WEB = Path(__file__).parent / "web"
@@ -132,7 +147,7 @@ def status():
         key, value = line.split(":", 1)
         if key in {"MemTotal", "MemAvailable", "SwapFree"}:
             memory[key] = int(value.split()[0]) * 1024
-    return {"memory": memory, "index": indexing.status,
+    return {"memory": memory, "index": indexing.status, "photos": photos.status(), "resources": resources.snapshot(),
             "indexed_files": db.rows("SELECT count(*) AS n FROM files")[0]["n"],
             "last_scan": db.state("last_scan"), "generation_at": db.state("generation_at"),
             "camera": camera.state(), "gesture_event": json.loads(db.state("gesture_event", "null")),
@@ -421,6 +436,30 @@ def run_flow(identifier: str, body: Run):
 @app.get("/api/runs")
 def runs():
     return db.rows("SELECT * FROM runs ORDER BY created DESC LIMIT 50")
+
+
+class MotionSettings(BaseModel):
+    enabled: bool
+    mappings: dict[str, str] = Field(default_factory=dict)
+    rules: dict[str, dict] = Field(default_factory=dict)
+
+
+@app.get("/api/motion")
+def motion_status():
+    return {**motion.state(), "camera_running": camera.running}
+
+
+@app.post("/api/motion")
+def motion_settings(body: MotionSettings):
+    motion.configure(body.enabled, body.mappings, body.rules)
+    if body.enabled:
+        try:
+            camera.start()
+            camera.gestures = False
+        except Exception:
+            motion.configure(False, body.mappings)
+            raise
+    return motion_status()
 
 
 @app.get("/api/camera")

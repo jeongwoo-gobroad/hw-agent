@@ -7,7 +7,7 @@ After=network.target
 User=jeongwoo
 WorkingDirectory=/home/jeongwoo/hw-agent
 Environment=OPENBLAS_NUM_THREADS=2
-ExecStart=/home/jeongwoo/hw-agent/data/build/llama.cpp/build/bin/llama-server --model /home/jeongwoo/hw-agent/models/Qwen3.5-4B-Q4_K_M.gguf --host 127.0.0.1 --port 8081 --ctx-size 2048 --parallel 1 --threads 3 --threads-batch 3 --batch-size 128 --ubatch-size 64 --no-warmup --api-key-file /home/jeongwoo/hw-agent/data/llm-api-key
+ExecStart=/home/jeongwoo/hw-agent/data/build/llama.cpp/build/bin/llama-server --model /home/jeongwoo/hw-agent/models/Qwen3.5-4B-Q4_K_M.gguf --host 127.0.0.1 --port 8081 --ctx-size 4096 --parallel 1 --threads 3 --threads-batch 3 --batch-size 128 --ubatch-size 64 --no-warmup --api-key-file /home/jeongwoo/hw-agent/data/llm-api-key
 Restart=on-failure
 RestartSec=10
 MemoryMax=5800M

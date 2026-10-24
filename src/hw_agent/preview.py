@@ -26,7 +26,7 @@ def clean_cache():
 def preview(path, record):
     key = hashlib.sha256(f"{path}:{path.stat().st_mtime_ns}:{path.stat().st_size}".encode()).hexdigest()
     suffix = path.suffix.lower()
-    if suffix in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".bmp"}:
+    if suffix in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".bmp", ".tif", ".tiff"}:
         target = CACHE / (key + ".jpg")
         with lock:
             if not target.exists():

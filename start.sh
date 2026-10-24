@@ -5,7 +5,7 @@ if [[ ! -x .venv/bin/python || ! -f .env ]]; then
   echo "설치 환경 또는 .env가 없습니다. README의 설치 절차를 확인하세요."
   exit 1
 fi
-units=(alter.service alter-llm.service alter-ngrok.service alter-oauth.service smbd.service)
+units=(alter.service alter-llm.service alter-ngrok.service alter-oauth.service alter-photos.service smbd.service)
 missing=()
 for unit in "${units[@]}"; do
   state=$(systemctl is-active "$unit" || true)

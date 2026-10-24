@@ -2,7 +2,7 @@ const $ = s => document.querySelector(s);
 const el = (tag, text, cls) => {const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
 let chatController=null;
 let csrf="", sessionId=null, roots=[], flowList=[], deviceList=[], editFlow=null, offset=0, lastQuery="";
-const titles={overview:"나의 공간, 한눈에.",files:"필요한 파일을 찾아보세요.",chat:"얼터와 함께 찾기.",drives:"저장장치를 한곳에서.",home:"우리 집의 작은 자동화.",camera:"지금, 카메라 너머.",settings:"나에게 맞게 설정하기."};
+const titles={photos:"기억을 모으는 공간.",photofolders:"사진 폴더를 따로 관리하세요.",overview:"나의 공간, 한눈에.",files:"필요한 파일을 찾아보세요.",chat:"얼터와 함께 찾기.",drives:"저장장치를 한곳에서.",home:"우리 집의 작은 자동화.",camera:"지금, 카메라 너머.",motion:"움직임으로 연결하는 일상.",settings:"나에게 맞게 설정하기."};
 function notify(text){$("#notice").textContent=text;$("#notice").hidden=false;clearTimeout(notify.timer);notify.timer=setTimeout(()=>$("#notice").hidden=true,7000);}
 async function api(path,method="GET",body){const response=await fetch("/api"+path,{method,headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},...(body!==undefined?{body:JSON.stringify(body)}:{})});const result=await response.json();if(!response.ok){if(response.status===401&&!path.startsWith("/smartthings/"))location.href="/login";throw new Error(typeof result.detail==="string"?result.detail:JSON.stringify(result.detail));}return result;}
 function action(selector,fn){$(selector).addEventListener("click",async e=>{const button=e.currentTarget;button.disabled=true;try{await fn(e);}catch(error){notify(error.message);}finally{button.disabled=button.dataset.inactive==="true";}});}
@@ -14,7 +14,8 @@ function page(name){
   document.querySelectorAll("nav button").forEach(n=>{n.classList.toggle("selected",n.dataset.page===name);if(n.dataset.page===name)n.setAttribute("aria-current","page");else n.removeAttribute("aria-current");});
   $("#heading").textContent=titles[name];history.replaceState(null,"","#"+name);
   if(name!=="camera")$("#stream").removeAttribute("src");
-  const loaders={drives:loadDrives,home:loadHome,chat:loadSessions,camera:loadCamera};
+  if(name!=="motion"){$("#motion-stream").removeAttribute("src");$("#motion-preview").hidden=true;$("#motion-preview-toggle").textContent="미리보기 켜기";}
+  const loaders={photos:()=>window.loadPhotos(),photofolders:()=>window.loadPhotoFolders(),drives:loadDrives,home:loadHome,chat:loadSessions,camera:loadCamera,motion:loadMotion};
   if(loaders[name])loaders[name]().catch(e=>notify(e.message));
   if(name==="files"&&!lastQuery)searchFiles().catch(e=>notify(e.message));
 }
@@ -22,7 +23,7 @@ function page(name){
 document.querySelectorAll("[data-page]").forEach(b=>b.onclick=()=>page(b.dataset.page));
 document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>page(b.dataset.go));
 action("#logout",async()=>{await api("/logout","POST",{});location.href="/login";});
-async function status(){const s=await api("/status");$("#file-count").textContent=s.indexed_files.toLocaleString();$("#memory").textContent=size(s.memory.MemAvailable);$("#camera-status").textContent=s.camera.recording?"녹화 중":s.camera.running?"켜짐":"꺼짐";$("#scan-status").textContent=s.index.running?`색인 중 · ${s.index.files}개`:s.index.error|| (s.last_scan?new Date(Number(s.last_scan)*1000).toLocaleTimeString()+" 확인":"폴더를 등록하세요");$("#gesture-state").textContent=s.camera.last_gesture?.name?"최근 인식: "+({Open_Palm:"손바닥",Closed_Fist:"주먹",Victory:"V 표시",Thumb_Up:"엄지 위",Thumb_Down:"엄지 아래"}[s.camera.last_gesture.name]||s.camera.last_gesture.name):s.camera.gestures?"손동작 인식 대기 중":"제스처 인식 꺼짐";if(s.gesture_event&&status.lastEvent!==s.gesture_event.time){status.lastEvent=s.gesture_event.time;notify("제스처 감지: "+s.gesture_event.gesture);}}
+async function status(){const s=await api("/status");if(window.photoDashboard)window.photoDashboard(s);$("#file-count").textContent=s.indexed_files.toLocaleString();$("#memory").textContent=size(s.memory.MemAvailable);$("#camera-status").textContent=s.camera.recording?"녹화 중":s.camera.running?"켜짐":"꺼짐";$("#scan-status").textContent=s.index.running?`색인 중 · ${s.index.files}개`:s.index.error|| (s.last_scan?new Date(Number(s.last_scan)*1000).toLocaleTimeString()+" 확인":"폴더를 등록하세요");$("#gesture-state").textContent=s.camera.last_gesture?.name?"최근 인식: "+({Open_Palm:"손바닥",Closed_Fist:"주먹",Victory:"V 표시",Thumb_Up:"엄지 위",Thumb_Down:"엄지 아래"}[s.camera.last_gesture.name]||s.camera.last_gesture.name):s.camera.gestures?"손동작 인식 대기 중":"제스처 인식 꺼짐";if(s.gesture_event&&status.lastEvent!==s.gesture_event.time){status.lastEvent=s.gesture_event.time;notify("제스처 감지: "+s.gesture_event.gesture);}}
 async function loadRoots(){roots=await api("/roots");document.querySelectorAll(".root-select").forEach(select=>{const old=select.value;select.replaceChildren();if(select.name==="root")select.add(new Option("전체 폴더","0"));roots.forEach(r=>select.add(new Option(r.label,r.id)));if([...select.options].some(o=>o.value===old))select.value=old;});$("#roots").replaceChildren();if(!roots.length)$("#roots").append(el("p","등록된 폴더가 없습니다. 위에서 드라이브의 폴더를 선택하세요.","muted"));roots.forEach(r=>{const row=el("div",undefined,"root-row");row.append(el("span",r.path),button("등록 해제",async()=>{if(!confirm("색인에서 이 폴더를 제외할까요? 원본은 보존됩니다."))return;await api("/roots/"+r.id,"DELETE");await loadRoots();}));$("#roots").append(row);});}
 async function loadDrives(){const devices=await api("/devices");$("#devices").replaceChildren();if(!devices.length)$("#devices").append(el("p","연결된 외장 저장장치가 없습니다.","muted"));devices.forEach(d=>{const card=el("div",undefined,"card");card.append(el("h2",d.model||d.name),el("p",`${d.transport} · ${d.fstype} · ${size(d.size)}`),el("p",d.mount||"마운트되지 않음"),el("small","남은 공간 "+size(d.free)),el("p","볼륨 ID · "+d.uuid,"muted"));if(d.mount)card.append(button("색인 폴더 선택",()=>browse(d.mount,"index")),button("SMB 폴더 선택",()=>browse(d.mount,"share")));card.append(button(d.mount?"안전하게 해제":"마운트",async()=>{if(d.mount&&!confirm("이 드라이브를 해제할까요?"))return;const result=await api("/devices/action","POST",{device:d.path,action:d.mount?"unmount":"mount"});notify(result.message);await loadDrives();}));$("#devices").append(card);});await loadRoots();await loadShares();}
 async function browse(path,target="index"){
@@ -156,3 +157,50 @@ async function loadShares(){const shares=await api("/shares");$("#shares").repla
 async function loadConnection(){const state=await api("/smartthings/connection");$("#oauth-status").textContent=state.connected?(state.error?"인증 갱신에 실패했습니다. 다시 연결하세요.":"삼성 계정이 연결되었습니다."):state.configured?"삼성 계정으로 로그인하여 기기를 연결하세요.":"OAuth 앱 등록을 준비하고 있습니다.";$("#oauth-connect").disabled=!state.configured;$("#oauth-connect").textContent=state.connected?"다시 연결":"삼성 계정으로 연결";$("#oauth-disconnect").hidden=!state.connected;return state;}
 action("#oauth-connect",async()=>{const result=await api("/smartthings/oauth/start","POST",{});location.assign(result.url);});
 action("#oauth-disconnect",async()=>{if(confirm("Alter에 저장된 SmartThings 인증을 지울까요? 삼성 계정의 앱 권한은 별도로 철회할 수 있습니다.")){await api("/smartthings/oauth","DELETE");deviceList=[];$("#smart-devices").replaceChildren();await loadConnection();}});
+
+const motionLabels={Face:"얼굴 감지",Open_Palm:"손바닥",Closed_Fist:"주먹",Victory:"브이",Thumb_Up:"엄지척",Thumb_Down:"엄지다운"};
+async function motionStatus(){
+  const s=await api("/motion");
+  const observed=Object.keys(s.observed).map(k=>motionLabels[k]).join(", ");
+  const event=s.last_event;
+  $("#motion-status").textContent=s.error||(!s.enabled?"감지 중지됨":!s.camera_running?"카메라가 멈췄습니다. 설정을 다시 적용하세요.":`감지 중 · ${observed||"대기 중"} · 처리 ${s.inference_ms}ms`)+(event?` · 최근 ${motionLabels[event.kind]}: ${{running:"Flow 실행 중",completed:"완료",failed:"실패",skipped_busy:"다른 Flow 실행 중으로 생략"}[event.status]||event.status}`:"");
+  return s;
+}
+async function loadMotion(){
+  $("#motion-save").disabled=true;
+  const [s,available]=await Promise.all([motionStatus(),api("/flows")]);
+  $("#motion-enabled").checked=s.enabled;
+  const box=$("#motion-rules");box.replaceChildren();
+  for(const [key,title] of Object.entries(motionLabels)){
+    const card=el("div",undefined,"card");card.dataset.kind=key;const heading=el("h2",title),glyph=el("i");glyph.dataset.lucide={Face:"scan-face",Open_Palm:"hand",Closed_Fist:"grab",Victory:"hand",Thumb_Up:"thumbs-up",Thumb_Down:"thumbs-down"}[key];glyph.setAttribute("aria-hidden","true");heading.prepend(glyph);card.append(heading);
+    const label=el("label","실행할 Flow"),select=el("select");select.name="flow";select.add(new Option("실행 안 함",""));
+    available.forEach(f=>select.add(new Option(f.name,f.id)));
+    if(s.mappings[key]&&!available.some(f=>f.id===s.mappings[key]))select.add(new Option("삭제된 Flow · 다시 선택하세요",s.mappings[key]));
+    select.value=s.mappings[key]||"";label.append(select);card.append(label);
+    const r=s.rules?.[key]||{};
+    for(const [name,text,value,min,max] of [["hold_seconds","유지 시간 (초)",r.hold_seconds??1,.3,60],["release_seconds","재감지 대기 (초)",r.release_seconds??1.5,.3,60],["repeat_seconds","실행 후 대기 (초)",r.repeat_seconds??5,3,3600]]){
+      const l=el("label",text),input=el("input");Object.assign(input,{name,type:"number",value,min,max,step:"0.1",required:true});l.append(input);card.append(l);
+    }
+    const repeat=el("label","계속 감지되는 동안 반복 실행","check"),check=el("input");check.type="checkbox";check.name="repeat";check.checked=!!r.repeat;repeat.prepend(check);card.append(repeat);box.append(card);
+  }
+  $("#motion-save").disabled=false;
+}
+$("#motion-form").onsubmit=async e=>{
+  e.preventDefault();const control=$("#motion-save");control.disabled=true;
+  try{
+    const mappings={},rules={};
+    $("#motion-rules").querySelectorAll("[data-kind]").forEach(card=>{
+      const key=card.dataset.kind;mappings[key]=card.querySelector("[name=flow]").value;rules[key]={repeat:card.querySelector("[name=repeat]").checked};
+      ["hold_seconds","release_seconds","repeat_seconds"].forEach(name=>rules[key][name]=Number(card.querySelector(`[name=${name}]`).value));
+    });
+    await api("/motion","POST",{enabled:$("#motion-enabled").checked,mappings,rules});await motionStatus();notify("상시 감지 설정을 저장했습니다.");
+  }catch(error){notify(error.message);}finally{control.disabled=false;}
+};
+action("#motion-refresh",motionStatus);
+action("#motion-stop",async()=>{const s=await api("/motion");await api("/motion","POST",{enabled:false,mappings:s.mappings,rules:s.rules});$("#motion-enabled").checked=false;await motionStatus();notify("감지를 중지했습니다. 영상과 녹화는 카메라 페이지에서 별도로 끌 수 있습니다.");});
+action("#motion-preview-toggle",async()=>{
+  const box=$("#motion-preview");
+  if(box.hidden){const s=await api("/motion");if(!s.camera_running)throw new Error("상시 감지를 켜거나 카메라를 먼저 켜세요.");$("#motion-stream").src="/api/camera/stream";box.hidden=false;$("#motion-preview-toggle").textContent="미리보기 끄기";}
+  else{$("#motion-stream").removeAttribute("src");box.hidden=true;$("#motion-preview-toggle").textContent="미리보기 켜기";}
+});
+setInterval(()=>{if(!$("#motion").hidden)motionStatus().catch(e=>notify(e.message));},3000);

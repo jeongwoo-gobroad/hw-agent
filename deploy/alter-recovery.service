@@ -1,7 +1,7 @@
 [Unit]
 Description=Restore Alter registered storage and verify startup connections
-After=network-online.target alter.service alter-llm.service alter-ngrok.service
-Wants=network-online.target alter.service alter-llm.service alter-ngrok.service
+After=network-online.target alter.service alter-llm.service alter-ngrok.service alter-photos.service
+Wants=network-online.target alter.service alter-llm.service alter-ngrok.service alter-photos.service
 StartLimitIntervalSec=0
 
 [Service]

@@ -28,7 +28,7 @@ cmake -S data/build/llama.cpp -B data/build/llama.cpp/build -DCMAKE_BUILD_TYPE=R
 cmake --build data/build/llama.cpp/build --target llama-server -j3
 ```
 
-models에 GGUF를 다운로드하고 기록의 해시를 확인합니다. data/llm-api-key에 무작위 토큰을 생성해 chmod600, deploy/alter-llm.service 설치 후 enable --now. 현재 기본값 Qwen3.5-4B-Q4_K_M, context2048/parallel1/threads3. MediaPipe gesture_recognizer.task는 Google 공식 모델 배포에서 별도 다운로드합니다. 가중치는 Git에 넣지 않습니다.
+models에 GGUF를 다운로드하고 기록의 해시를 확인합니다. data/llm-api-key에 무작위 토큰을 생성해 chmod600, deploy/alter-llm.service 설치 후 enable --now. 현재 기본값 Qwen3.5-4B-Q4_K_M, context4096/parallel1/threads3. MediaPipe gesture_recognizer.task는 Google 공식 모델 배포에서 별도 다운로드합니다. 가중치는 Git에 넣지 않습니다.
 
 ngrok은 .env의 NGROK_AUTHTOKEN을 읽고 자동 시작합니다. 계정 고정 개발 도메인을 쓰므로 별도 소유 도메인이 필요하지 않습니다. 무료 사용량 한도와 브라우저 안내는 docs/oauth.md를 참고하세요. 예전 alter-tunnel.service는 Cloudflare 임시 터널용 예제로 보존하며 현재 운용에는 사용하지 않습니다.
 
@@ -81,3 +81,12 @@ Pi Chromium 시작 주소는 http://127.0.0.1:8080/panel 입니다. 업데이트
 Windows SMB 접속: 파일 탐색기 주소창에 `\\192.168.0.44` 또는 `\\192.168.0.44\Alter-공유이름`을 입력합니다. Windows 계정 대신 SMB 사용자 jeongwoo와 설치 시 지정한 Samba 비밀번호로 인증합니다. 웹 로그인과 별도 인증입니다. 네트워크 목록 검색을 위해 `sudo apt-get install wsdd2` 및 `sudo systemctl enable --now wsdd2`를 적용했습니다. Windows 네트워크가 Private이고 네트워크 검색이 허용되어야 합니다. SMB1이나 게스트 접근은 활성화하지 않습니다. wsdd2 공식 설명: https://manpages.debian.org/bookworm/wsdd2/wsdd2.8.en.html . 직접 UNC 접근 성공과 탐색기 자동 검색 표시는 별도로 판단하세요.
 
 NTFS 압축과 쓰기 진단: SMB read only, 마운트 rw/ro, 소유권, 기존 연결, 개별 파일 속성을 분리해 확인합니다. 폴더 압축 속성만으로 쓰기 불가를 단정하지 않습니다. NTFS3는 일반 NTFS 압축 읽기/쓰기를 지원합니다(https://docs.kernel.org/filesystems/ntfs3.html). Windows에서 압축 해제는 해당 파일/폴더 속성의 고급 압축 옵션으로 가능하지만 범위를 먼저 확정하고 여유 공간을 확인해야 합니다. 접근 금지 하위 폴더가 있는 볼륨에 전체 재귀 해제를 실행하지 않습니다. 기존 공유 수정은 목록의 설정 변경→읽기 전용 변경→공유 적용 순서입니다. 기존 Windows 연결은 탐색기 창을 닫고 공유 주소로 다시 연결해야 할 수 있습니다.
+
+
+상시 감지 설치: `.venv/bin/python scripts/install-vision.py`로 공식 두 모델을 검증하고 웹 서비스를 재시작합니다. 대시보드 상시 모션 감지에서 활성 여부·각 Flow·유지/재감지/반복을 저장합니다. 카메라를 독점하는 다른 프로그램이 있으면 먼저 종료해야 합니다. 미리보기 여부와 서버 감지는 독립적이며, 서버의 프레임 처리와 Flow 실행은 디스플레이 입력 활동으로 취급하지 않습니다. 초기 기본값은 꺼짐이나 사용자가 활성 설정을 저장하면 다음 시작에도 복원됩니다.
+
+부하 재검증: `PYTHONPATH=src .venv/bin/python scripts/verify-motion-load.py`. 카메라 설정/Flow 매핑을 임시로 비워 자동 기기 조작 없이 시험하고 종료 시 이전 설정을 복원합니다. 수 분 이상 걸릴 수 있으므로 출력 토큰을 계속 읽어 모니터링하지 말고 프로세스 완료와 data/motion-load-report.json을 확인합니다. 테스트 중 사용자가 감지 설정을 바꾸지 않도록 합니다. 최신 설정은4096문맥이며 실제2048출력 토큰 수와 두 모델 frame 증가, cgroup OOM/재시작을 함께 확인해야 합니다.
+
+## 사진 작업자 설치/갱신
+
+`sudo apt-get install libimage-exiftool-perl` 후 `.venv/bin/pip install -r requirements.txt`, `.venv/bin/python scripts/install-photo-models.py`를 실행합니다. `deploy/alter-photos.service`를 `/etc/systemd/system/`에 설치하고 daemon-reload 후 `systemctl enable --now alter-photos`를 실행합니다. 웹 서비스를 재시작하면 별도 사진 폴더 메뉴가 나타납니다. `start.sh`와 부팅 복구는 사진 서비스/사진 전용 볼륨도 복원합니다. 데이터 관리·오류 처리·API는 [photos.md](photos.md)를 참조하세요.
