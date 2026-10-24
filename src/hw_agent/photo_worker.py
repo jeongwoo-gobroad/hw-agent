@@ -14,6 +14,7 @@ from PIL import Image, ImageOps
 from tqdm import tqdm
 from . import db, photos, storage
 from . import photo_runtime
+from .progress import count_files, Estimate
 from .photo_models import PhotoModels, MODEL_VERSION
 
 IMAGES = {'.jpg', '.jpeg', '.png', '.heic', '.heif', '.webp', '.tif', '.tiff', '.bmp'}
@@ -22,6 +23,12 @@ stopping = False
 
 
 def progress(**values):
+    current = photo_runtime.read()
+    if not current.get('discovery_complete') and values.get('stage') == 'discovering':
+        elapsed = time.time()-current.get('discovery_started', time.time())
+        done = values.get('discovered', current.get('discovered', 0))
+        total = current.get('inventory_total', 0)
+        values['eta_seconds'] = round(max(0,total-done)*elapsed/done) if done>=3 and elapsed>=2 else None
     photo_runtime.write(**values)
     photo_runtime.heartbeat()
 
@@ -54,7 +61,7 @@ def metadata(path):
     return captured, source, data.get('ContentIdentifier') or data.get('MediaGroupUUID'), float(data.get('Duration') or 0)
 
 
-def discover(root, on_batch=None):
+def discover(root, on_batch=None, discovered_offset=0):
     base = photos.root_path(root)
     generation = uuid.uuid4().hex
     pairs = []
@@ -117,7 +124,7 @@ def discover(root, on_batch=None):
                   seen=excluded.seen,content_id=excluded.content_id,duration=excluded.duration,scores=CASE WHEN photos.modified!=excluded.modified OR photos.size!=excluded.size THEN '{}' ELSE photos.scores END''',
                   (secrets.randbits(52), root['id'], relative, str(Path(relative).parent), name, kind, stat.st_mtime, stat.st_size, captured, source, generation, content, duration))
             pairs.append((relative, kind, content, duration, captured))
-            progress(stage='discovering', discovered=len(pairs))
+            progress(stage='discovering', discovered=discovered_offset+len(pairs))
     # 읽기를 끝낸 폴더에서만 사라진 파일의 색인을 정리한다.
     with db.connect() as conn:
         stale = [r[0] for r in conn.execute('SELECT id FROM photos WHERE root=? AND seen!=?', (root['id'], generation))]
@@ -225,7 +232,7 @@ def run_scan():
         with db.connect() as conn:
             conn.execute("UPDATE photos SET scores='{}', error=NULL WHERE scores NOT LIKE '%\"paired\": true%'")
         db.set_state('photo_model_version', MODEL_VERSION)
-    progress(stage='discovering', running=True, discovered=0, done=0, total=0, errors=0, error=None)
+    progress(stage='counting', running=True, discovered=0, done=0, total=0, errors=0, error=None, inventory_total=0, discovery_complete=False, eta_seconds=None, processed_base=0)
     errors = 0
     models = None
     early_done = 0
@@ -243,14 +250,30 @@ def run_scan():
                 with db.connect() as conn:
                     conn.execute('UPDATE photos SET error=? WHERE id=?',(type(exc).__name__,item['id']))
         progress(stage='discovering', early_done=early_done)
-    for root in db.rows('SELECT * FROM photo_roots'):
-        try: discover(root, early_batch)
+    roots = db.rows('SELECT * FROM photo_roots')
+    inventory_total = 0
+    for root in roots:
+        try:
+            inventory_total += count_files(photos.root_path(root), paused, IMAGES|VIDEOS,
+                lambda n: progress(inventory_total=inventory_total+n))
+        except InterruptedError:
+            progress(stage='paused', running=False)
+            return
+        except Exception as exc:
+            errors += 1
+            progress(error=str(getattr(exc, 'detail', type(exc).__name__)))
+    progress(stage='discovering', inventory_total=inventory_total, discovery_started=time.time())
+    for root in roots:
+        try: discover(root, early_batch, photo_runtime.read().get('discovered', 0))
         except Exception as exc:
             errors += 1
             progress(error=f"{root['label']}: {getattr(exc, 'detail', type(exc).__name__)}")
     pending = db.rows("""SELECT * FROM photos p WHERE scores='{}' AND NOT EXISTS
       (SELECT 1 FROM photos l WHERE l.root=p.root AND l.live_relative=p.relative)""")
-    progress(stage='classifying', total=len(pending), errors=errors)
+    media_total = photos.status()['total_media']
+    progress(stage='classifying', total=len(pending), errors=errors, discovery_complete=True,
+             processed_base=max(0, media_total-len(pending)), media_total=media_total, done=0)
+    estimate = Estimate()
     try:
         for i, item in enumerate(tqdm(pending, desc='Photo library', unit='media')):
             if paused(): break
@@ -264,9 +287,9 @@ def run_scan():
                 errors += 1
                 with db.connect() as conn:
                     conn.execute('UPDATE photos SET error=? WHERE id=?', (str(getattr(exc, 'detail', type(exc).__name__))[:200], item['id']))
-            progress(done=i+1, errors=errors)
+            progress(done=i+1, errors=errors, eta_seconds=estimate.advance(len(pending)-i-1))
     finally:
-        progress(stage='paused' if paused() else 'complete', running=False, errors=errors)
+        progress(stage='paused' if paused() else 'complete', running=False, errors=errors, eta_seconds=None if paused() or errors else 0)
 
 
 def main():

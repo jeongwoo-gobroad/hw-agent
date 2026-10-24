@@ -10,6 +10,7 @@ import time
 import uuid
 from fastapi import HTTPException
 from . import db, storage
+from .progress import count_files, Estimate
 
 scan_lock = threading.Lock()
 status = {"running": False, "files": 0, "error": None}
@@ -30,13 +31,27 @@ def tokens(text):
 def scan():
     if not scan_lock.acquire(blocking=False):
         return
-    status.update(running=True, files=0, error=None)
+    status.update(running=True, files=0, error=None, stage="counting", total=0, eta_seconds=None, total_known=False)
     try:
         previous = float(db.state("generation_at", "0"))
         rebuild = time.time() - previous >= 3 * 86400 or db.state("extractor_version") != EXTRACTOR_VERSION
         generation = uuid.uuid4().hex
         complete = True
-        for root in db.rows("SELECT * FROM roots"):
+        roots = db.rows("SELECT * FROM roots")
+        for root in roots:
+            try:
+                offset = status['total']
+                count = count_files(storage.root_path(root), stop_event.is_set,
+                                    on_count=lambda n: status.update(total=offset+n))
+                status['total'] = offset+count
+            except InterruptedError:
+                return
+            except (OSError, HTTPException) as exc:
+                status['error'] = str(getattr(exc, 'detail', type(exc).__name__))
+                complete = False
+        status.update(total_known=True, stage='indexing')
+        estimate = Estimate()
+        for root in roots:
             try:
                 base = storage.root_path(root)
             except HTTPException as error:
@@ -80,8 +95,11 @@ def scan():
                         conn.execute("INSERT INTO staging VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                                      (*record, tokens(name), tokens(key), tokens(text)))
                     status["files"] += 1
+                    status['total'] = max(status['total'], status['files'])
+                    status.update(stage='indexing', eta_seconds=estimate.advance(status['total']-status['files']))
             if not db.rows("SELECT id FROM roots WHERE id=?", (root["id"],)):
                 continue
+            status.update(stage='finalizing', eta_seconds=None)
             # 드라이브가 사라지면 기존 색인을 지우지 않는다.
             storage.root_path(root)
             with db.connect() as conn:
@@ -108,6 +126,8 @@ def scan():
     except Exception as exc:
         status["error"] = str(getattr(exc, "detail", type(exc).__name__))
     finally:
+        status['stage'] = 'stopped' if stop_event.is_set() else 'error' if status['error'] else 'complete'
+        status['eta_seconds'] = 0 if status['stage']=='complete' else None
         status["running"] = False
         scan_lock.release()
 
