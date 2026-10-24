@@ -10,6 +10,7 @@ import uuid
 from fastapi import HTTPException
 from . import db, flows, storage
 from .config import BASE
+from .motion import motion
 
 
 class Camera:
@@ -36,6 +37,10 @@ class Camera:
         with self.lock:
             if self.running:
                 return
+            if hasattr(self, "capture_thread") and self.capture_thread.is_alive():
+                self.capture_thread.join(timeout=5)
+                if self.capture_thread.is_alive():
+                    raise HTTPException(409, "카메라 종료 중입니다. 잠시 후 다시 켜세요.")
             try:
                 from picamera2 import Picamera2
                 self.device = Picamera2()
@@ -44,15 +49,20 @@ class Camera:
                 self.device.start()
                 self.running = True
                 self.error = None
-                threading.Thread(target=self.capture, daemon=True).start()
+                self.capture_thread = threading.Thread(target=self.capture, daemon=True)
+                self.capture_thread.start()
             except Exception as exc:
                 self.error = type(exc).__name__ + ": " + str(exc)
                 raise HTTPException(503, self.error)
 
-    def stop(self):
+    def stop(self, persist=True):
         self.stop_recording()
         self.gestures = False
         self.running = False
+        if motion.enabled and persist:
+            motion.configure(False, motion.mappings)
+        if hasattr(self, "capture_thread") and self.capture_thread.is_alive():
+            self.capture_thread.join(timeout=5)
 
     def capture(self):
         last_detect = 0
@@ -70,9 +80,12 @@ class Camera:
                         self.record_queue.put_nowait(frame)
                     except queue.Full:
                         self.error = "녹화 처리 속도 부족: 일부 프레임 생략"
-                if self.gestures and time.monotonic() - last_detect > .3:
+                if (motion.enabled or self.gestures) and time.monotonic() - last_detect > .3:
                     last_detect = time.monotonic()
-                    self.detect(image)
+                    if motion.enabled:
+                        motion.detect(image)
+                    else:
+                        self.detect(image)
                 time.sleep(.03)
         except Exception as exc:
             self.error = type(exc).__name__ + ": " + str(exc)
@@ -146,11 +159,7 @@ class Camera:
     def enable_gestures(self, enabled):
         if enabled and self.recognizer is None:
             try:
-                import mediapipe as mp
-                self.recognizer = mp.tasks.vision.GestureRecognizer.create_from_options(
-                    mp.tasks.vision.GestureRecognizerOptions(
-                        base_options=mp.tasks.BaseOptions(model_asset_path=str(BASE / "models/gesture_recognizer.task")),
-                        running_mode=mp.tasks.vision.RunningMode.IMAGE))
+                self.recognizer = motion.load_gesture()
             except Exception as exc:
                 raise HTTPException(503, "제스처 모델 준비 실패: " + str(exc))
         if enabled:

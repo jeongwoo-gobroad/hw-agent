@@ -49,6 +49,9 @@ def restore_storage():
         if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
             raise RuntimeError("데이터베이스 검사 실패. 자동 초기화하지 않습니다. 백업 복구가 필요합니다.")
         registered = {row[0] for row in connection.execute("SELECT uuid FROM roots")}
+    with db.connect() as connection:
+        if connection.execute("SELECT 1 FROM sqlite_master WHERE name='photo_roots'").fetchone():
+            registered.update(row[0] for row in connection.execute("SELECT uuid FROM photo_roots"))
     registered.update(share["uuid"] for share in json.loads(db.state("shares", "{}")).values())
     present = set()
     listing = storage.devices()
