@@ -52,6 +52,7 @@ JPEG/PNG/WebP/TIFF/HEIC/HEIF 등의 사진을 표시합니다. H.264 및 호환 
 | PATCH items/{id} | `{labels:[...]}` 수동 주제, null이면 자동값 복원 |
 | PATCH people/{id} | `{name}` 이름 저장 |
 | PATCH faces/{id} | `{person:id}` 이동, 0이면 새 묶음 |
+| GET faces/{id}/thumbnail | 인증된 개별 얼굴 미리보기 |
 | GET items/{id}/thumbnail | 인증된 JPEG 썸네일 |
 | GET items/{id}/media | inline 이미지/영상; live=true 연결 영상, original=true 원본 다운로드 |
 

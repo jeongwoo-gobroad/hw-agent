@@ -16,6 +16,8 @@ from fastapi import HTTPException
 from PIL import Image
 from hw_agent import db, photos, storage
 from hw_agent.photo_worker import discover
+from hw_agent.photo_worker import process
+import numpy as np
 
 
 class PhotoTests(unittest.TestCase):
@@ -115,6 +117,21 @@ class PhotoTests(unittest.TestCase):
                 response=photos.media(1)
             self.assertEqual(Path(response.path)==path,codec=='libx264')
             self.assertTrue(Path(response.path).exists())
+
+    def test_face_thumbnail_and_removal(self):
+        identifier=self.insert()
+        class Model:
+            def analyze(self,image):
+                embedding=np.zeros(128,dtype=np.float32);embedding[0]=1
+                return {'people':.99},[(embedding,[0,0,1,1],image.copy())]
+        process(db.rows('SELECT * FROM photos WHERE id=?',(identifier,))[0],Model())
+        face=db.rows('SELECT id FROM photo_faces WHERE photo=?',(identifier,))[0]['id']
+        response=photos.face_thumbnail(face)
+        path=Path(response.path)
+        self.assertTrue(path.exists())
+        photos.remove_root(self.root['id'])
+        self.assertFalse(path.exists())
+        with self.assertRaises(HTTPException):photos.face_thumbnail(face)
 
 
 if __name__=='__main__': unittest.main()

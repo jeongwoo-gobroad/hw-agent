@@ -93,6 +93,7 @@ def discover(root):
     # 읽기를 끝낸 폴더에서만 사라진 파일의 색인을 정리한다.
     with db.connect() as conn:
         stale = [r[0] for r in conn.execute('SELECT id FROM photos WHERE root=? AND seen!=?', (root['id'], generation))]
+        stale_faces = [r[0] for r in conn.execute('SELECT id FROM photo_faces WHERE photo IN (SELECT id FROM photos WHERE root=? AND seen!=?)', (root['id'], generation))]
         conn.execute('DELETE FROM photo_faces WHERE photo IN (SELECT id FROM photos WHERE root=? AND seen!=?)', (root['id'], generation))
         conn.execute('DELETE FROM photos WHERE root=? AND seen!=?', (root['id'], generation))
         by_content, by_stem = {}, {}
@@ -119,6 +120,8 @@ def discover(root):
         conn.execute('DELETE FROM photo_people WHERE id NOT IN (SELECT person FROM photo_faces)')
     for identifier in stale:
         (photos.CACHE / f'{identifier}.jpg').unlink(missing_ok=True)
+    for identifier in stale_faces:
+        (photos.CACHE / f'{identifier}.face.jpg').unlink(missing_ok=True)
     return True
 
 
@@ -151,9 +154,9 @@ def process(item, models):
             if cover is None: cover = image.copy()
             current, found = models.analyze(image)
             for key, value in current.items(): scores[key] = max(scores.get(key, 0), value)
-            for embedding, box in found:
-                if not any(float(embedding @ e) >= .55 for e,b in faces):
-                    faces.append((embedding, box))
+            for embedding, box, crop in found:
+                if not any(float(embedding @ e) >= .55 for e,b,c in faces):
+                    faces.append((embedding, box, crop))
             progress(stage='classifying')
     analyze(all_frames)
     if item['live_relative']:
@@ -168,20 +171,25 @@ def process(item, models):
             temp.unlink(missing_ok=True)
             return
         temp.replace(photos.CACHE / f"{item['id']}.jpg")
+        old_faces = [r[0] for r in conn.execute('SELECT id FROM photo_faces WHERE photo=?', (item['id'],))]
         conn.execute('DELETE FROM photo_faces WHERE photo=?', (item['id'],))
-        for embedding, box in faces:
+        for embedding, box, crop in faces:
             candidates = [(float(embedding @ np.frombuffer(p['embedding'], np.float32)), p['id'])
                           for p in conn.execute('SELECT * FROM photo_people WHERE embedding IS NOT NULL')]
             score, person = max(candidates, default=(0, 0))
             # 보수적인 유사도 기준. 사용자는 잘못 묶인 얼굴을 분리/이동할 수 있다.
             if score < .55:
                 person = conn.execute('INSERT INTO photo_people(embedding) VALUES(?)', (embedding.astype(np.float32).tobytes(),)).lastrowid
-            conn.execute('INSERT INTO photo_faces(photo,person,box) VALUES(?,?,?)', (item['id'], person, json.dumps(box)))
+            face_id = secrets.randbits(52)
+            conn.execute('INSERT INTO photo_faces(id,photo,person,box) VALUES(?,?,?,?)', (face_id, item['id'], person, json.dumps(box)))
+            crop.save(photos.CACHE / f'{face_id}.face.jpg', quality=90)
         conn.execute('UPDATE photos SET scores=?,labels=?,error=NULL WHERE id=?',
                      (json.dumps(scores), json.dumps([k for k,v in scores.items() if v >= (.82 if k == 'cards' else .7)]), item['id']))
         if item['live_relative']:
             conn.execute("UPDATE photos SET scores=? WHERE root=? AND relative=?",
                          (json.dumps({'paired': True}), item['root'], item['live_relative']))
+    for identifier in old_faces:
+        (photos.CACHE / f'{identifier}.face.jpg').unlink(missing_ok=True)
 
 
 def run_scan():

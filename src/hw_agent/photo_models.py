@@ -71,7 +71,8 @@ class PhotoModels:
             embedding /= np.linalg.norm(embedding)
             x, y, w, h = face[:4]
             box = [float(x/small.width), float(y/small.height), float(w/small.width), float(h/small.height)]
-            faces.append((embedding, box))
+            crop = Image.fromarray(self.cv.cvtColor(aligned, self.cv.COLOR_BGR2RGB))
+            faces.append((embedding, box, crop))
         if faces:
             scores["people"] = max(.99, scores["people"])
         return scores, faces

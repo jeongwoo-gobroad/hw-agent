@@ -104,12 +104,15 @@ def remove_root(identifier: int):
     # 오프라인 드라이브도 등록 정보만으로 해제한다. 원본에는 손대지 않는다.
     with db.connect() as conn:
         ids = [r[0] for r in conn.execute('SELECT id FROM photos WHERE root=?', (identifier,))]
+        faces = [r[0] for r in conn.execute('SELECT id FROM photo_faces WHERE photo IN (SELECT id FROM photos WHERE root=?)', (identifier,))]
         conn.execute('DELETE FROM photo_faces WHERE photo IN (SELECT id FROM photos WHERE root=?)', (identifier,))
         conn.execute('DELETE FROM photos WHERE root=?', (identifier,))
         conn.execute('DELETE FROM photo_roots WHERE id=?', (identifier,))
         conn.execute('DELETE FROM photo_people WHERE id NOT IN (SELECT person FROM photo_faces)')
     for i in ids:
         (CACHE / f'{i}.jpg').unlink(missing_ok=True)
+    for i in faces:
+        (CACHE / f'{i}.face.jpg').unlink(missing_ok=True)
     return {'ok': True}
 
 
@@ -176,7 +179,7 @@ def items(root: int = 0, album: str | None = None, topic: str = '', person: int 
 
 @router.get('/people')
 def people():
-    return db.rows('''SELECT p.id,p.name,count(DISTINCT f.photo) count,min(f.photo) cover
+    return db.rows('''SELECT p.id,p.name,count(DISTINCT f.photo) count,min(f.photo) cover,min(f.id) cover_face
       FROM photo_people p JOIN photo_faces f ON f.person=p.id GROUP BY p.id ORDER BY count DESC''')
 
 
@@ -189,6 +192,16 @@ def rename_person(identifier: int, body: PersonName):
     with db.connect() as conn:
         conn.execute('UPDATE photo_people SET name=? WHERE id=?', (body.name.strip(), identifier))
     return {'ok': True}
+
+
+@router.get('/faces/{identifier}/thumbnail')
+def face_thumbnail(identifier: int):
+    face = db.rows('SELECT photo FROM photo_faces WHERE id=?', (identifier,))
+    if not face: raise HTTPException(404, '얼굴을 찾을 수 없습니다.')
+    safe_media(face[0]['photo'])
+    target = CACHE / f'{identifier}.face.jpg'
+    if not target.exists(): raise HTTPException(404, '얼굴 미리보기 준비 중입니다.')
+    return FileResponse(target, media_type='image/jpeg')
 
 
 class FacePerson(BaseModel):
