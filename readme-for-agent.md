@@ -126,3 +126,10 @@ repeat_seconds는 실행 시작 간격이 아니라 Flow 완료 후 최소 대�
 - `/api/camera/orientation` POST: rotation(strict int 0/90/180/270), mirror_horizontal/mirror_vertical(strict bool). camera_orientation DB 상태에 저장합니다. 녹화 중409, 잘못된 회전400, 타입오류422. 프레임 변환 후 MJPEG·녹화·motion에 동일 프레임을 전달합니다. 방향 변경 시 hold 누적을 지우지만 기존 실행 쿨다운은 유지합니다.
 - `photo_runtime.py`: 파일 기반 progress/heartbeat. `photo_worker.py`는 64개 ExifTool 메타데이터 배치, 발견 중8개씩 조기 분류, MODEL_VERSION 변경 시 자동 점수 무효화. FP32 CLIP 모델 파일과 고정 해시는 install-photo-models.py에서 관리합니다.
 - 회귀 검증: tests/test_explorer_camera.py, tests/test_photos.py. 실제 사용자 사진/얼굴 점검물은 data 또는 Git 밖에만 두고 커밋하지 않습니다.
+
+
+## 진행률 계측
+
+`progress.py`는 보호 경계를 지키는 사전 파일 개수 집계와 현재 작업 표본 기반 Estimate를 제공합니다. 파일 indexing.status에는 stage, total, total_known, files, eta_seconds가 추가됩니다. 사진 진행 파일에는 inventory_total, discovery_complete, processed_base, media_total, eta_seconds가 추가됩니다. 사진 discover의 discovered_offset은 여러 루트의 누적 발견 수를 유지합니다. 사진 분류 분자는 processed_base+done, 분모는 media_total이며 Live 연결 영상은 별도 항목으로 세지 않습니다. photos.js가 두 카드의 백분율/ETA와 미확정·중단 상태를 렌더링합니다. ETA는 단계 단위이고 FTS 반영 시간의 확정 예측이 아닙니다. 기존 done/total API 필드는 이번 분류 작업 수 의미를 유지합니다. `tests/test_progress.py`가 제외 경계·확장자·심볼릭 링크·중단·ETA 초기 표본과 계산을 검사합니다.
+
+사진 상태 집계/목록의 Live Photo 제외 NOT EXISTS 조인은 photos_live_pair(root,live_relative) 인덱스가 필요합니다. 이 인덱스가 없으면 대형 라이브러리 상태 조회가 제곱 규모로 느려져 대시보드 polling이 밀립니다.

@@ -27,6 +27,7 @@ def init():
           labels TEXT DEFAULT '[]', manual_labels TEXT, error TEXT, seen TEXT,
           UNIQUE(root,relative));
         CREATE INDEX IF NOT EXISTS photos_date ON photos(captured);
+        CREATE INDEX IF NOT EXISTS photos_live_pair ON photos(root,live_relative);
         CREATE TABLE IF NOT EXISTS photo_people(id INTEGER PRIMARY KEY, name TEXT DEFAULT '', embedding BLOB);
         CREATE TABLE IF NOT EXISTS photo_faces(id INTEGER PRIMARY KEY, photo INTEGER, person INTEGER, box TEXT);
         CREATE INDEX IF NOT EXISTS photo_face_person ON photo_faces(person,photo);
