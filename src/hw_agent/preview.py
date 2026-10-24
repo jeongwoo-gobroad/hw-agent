@@ -26,6 +26,23 @@ def clean_cache():
 def preview(path, record):
     key = hashlib.sha256(f"{path}:{path.stat().st_mtime_ns}:{path.stat().st_size}".encode()).hexdigest()
     suffix = path.suffix.lower()
+    if suffix == '.pdf':
+        return path, 'application/pdf'
+    if suffix in {'.txt','.md','.py','.js','.ts','.tsx','.jsx','.json','.yaml','.yml','.toml','.ini',
+                  '.cfg','.csv','.log','.sh','.ps1','.bat','.c','.cpp','.h','.hpp','.java','.rs','.go',
+                  '.html','.css','.xml','.sql','.r','.rb','.swift','.kt','.ipynb'}:
+        target = CACHE / (key + '.txt')
+        with path.open('rb') as source:
+            raw = source.read(2*1024*1024+1)
+        truncated = len(raw)>2*1024*1024
+        raw = raw[:2*1024*1024]
+        try: text = raw.decode('utf-8-sig')
+        except UnicodeDecodeError:
+            try: text = raw.decode('cp949')
+            except UnicodeDecodeError: text = raw.decode('utf-8', errors='replace')
+        if truncated: text += '\n\n[미리보기는 앞 2MiB까지 표시합니다. 전체 내용은 원본을 내려받으세요.]'
+        target.write_text(text, encoding='utf-8')
+        return target, 'text/plain; charset=utf-8'
     if suffix in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".bmp", ".tif", ".tiff"}:
         target = CACHE / (key + ".jpg")
         with lock:

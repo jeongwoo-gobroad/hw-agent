@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from . import db, flows, storage
 from .config import BASE
 from .motion import motion
+from PIL import Image
 
 
 class Camera:
@@ -26,11 +27,50 @@ class Camera:
         self.record_dir = None
         self.recognizer = None
         self.record_queue = queue.Queue(maxsize=20)
+        self.orientation_lock = threading.RLock()
+        self.orientation = {"rotation": 0, "mirror_horizontal": False, "mirror_vertical": False}
+        self.frame_size = None
+
+    def restore_orientation(self):
+        saved = json.loads(db.state("camera_orientation", "{}"))
+        self.set_orientation(**{**self.orientation, **saved})
+
+    def set_orientation(self, rotation=0, mirror_horizontal=False, mirror_vertical=False):
+        if type(rotation) is not int or rotation not in {0, 90, 180, 270} or any(
+                type(v) is not bool for v in (mirror_horizontal, mirror_vertical)):
+            raise HTTPException(400, "회전은 0/90/180/270도, 반전은 켜기/끄기로 지정하세요.")
+        with self.lock, self.orientation_lock:
+            if self.recording:
+                raise HTTPException(409, "녹화를 중지한 뒤 카메라 방향을 변경하세요.")
+            settings = dict(rotation=rotation, mirror_horizontal=mirror_horizontal, mirror_vertical=mirror_vertical)
+            db.set_state("camera_orientation", json.dumps(settings))
+            self.orientation = settings
+            self.frame = None
+            # 방향을 바꾸기 전 프레임의 유지 시간은 새 방향에 이어 붙이지 않는다.
+            with motion.lock:
+                for gate in motion.gates.values():
+                    gate.since = gate.absent_since = None
+                    # 이미 실행한 상태와 쿨다운은 유지하여 회전만으로 재실행되지 않게 한다.
+                motion.observed = {}
+            self.candidate, self.held_since = None, 0
+        return self.orientation.copy()
+
+    def orient(self, image):
+        rotation = self.orientation["rotation"]
+        operations = {90: Image.Transpose.ROTATE_270, 180: Image.Transpose.ROTATE_180, 270: Image.Transpose.ROTATE_90}
+        if rotation:
+            image = image.transpose(operations[rotation])
+        if self.orientation["mirror_horizontal"]:
+            image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        if self.orientation["mirror_vertical"]:
+            image = image.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+        return image
 
     def state(self):
         return {"running": self.running, "recording": self.recording,
                 "gestures": self.gestures, "error": self.error,
                 "last_gesture": self.last_gesture, "record_dir": self.record_dir,
+                "orientation": self.orientation.copy(), "frame_size": self.frame_size,
                 "mappings": json.loads(db.state("gesture_mappings", "{}"))}
 
     def start(self):
@@ -69,23 +109,26 @@ class Camera:
         try:
             while self.running:
                 image = self.device.capture_image("main")
-                output = io.BytesIO()
-                image.save(output, format="JPEG", quality=75)
-                frame = output.getvalue()
-                with self.condition:
-                    self.frame = frame
-                    self.condition.notify_all()
-                if self.recording:
-                    try:
-                        self.record_queue.put_nowait(frame)
-                    except queue.Full:
-                        self.error = "녹화 처리 속도 부족: 일부 프레임 생략"
-                if (motion.enabled or self.gestures) and time.monotonic() - last_detect > .3:
-                    last_detect = time.monotonic()
-                    if motion.enabled:
-                        motion.detect(image)
-                    else:
-                        self.detect(image)
+                with self.orientation_lock:
+                    image = self.orient(image)
+                    self.frame_size = image.size
+                    output = io.BytesIO()
+                    image.save(output, format="JPEG", quality=75)
+                    frame = output.getvalue()
+                    with self.condition:
+                        self.frame = frame
+                        self.condition.notify_all()
+                    if self.recording:
+                        try:
+                            self.record_queue.put_nowait(frame)
+                        except queue.Full:
+                            self.error = "녹화 처리 속도 부족: 일부 프레임 생략"
+                    if (motion.enabled or self.gestures) and time.monotonic() - last_detect > .3:
+                        last_detect = time.monotonic()
+                        if motion.enabled:
+                            motion.detect(image)
+                        else:
+                            self.detect(image)
                 time.sleep(.03)
         except Exception as exc:
             self.error = type(exc).__name__ + ": " + str(exc)

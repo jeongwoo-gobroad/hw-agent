@@ -30,4 +30,4 @@
 
 이번 동시 부하 시험부터 Qwen3.5-4B-Q4_K_M의 문맥을4096으로 설정했습니다. 2048개 출력 토큰 외에 입력을 수용하기 위한 것으로, 위 초기 비교의2048문맥 기록과 구분합니다. PC GPU는 사용하지 않습니다. 기존 모델이 사용 가능하고 메모리 시험을 통과하면 YOLO26x 학습 조건은 성립하지 않습니다.
 
-사진 관리 모델: CLIP ViT-B/32 ONNX int8 + OpenCV YuNet/SFace를 별도 사진 작업자에서 CPU로 실행합니다. 설치 리비전과 SHA256은 `scripts/install-photo-models.py`, 선택 이유·분류 기준·오류 수정·범위는 [photos.md](photos.md)를 참조하세요. 얼굴 사진은 외부로 보내지 않습니다.
+사진 관리 모델: CLIP ViT-B/32 ONNX FP32 + OpenCV YuNet/SFace를 별도 사진 작업자에서 CPU로 실행합니다. 설치 리비전과 SHA256은 `scripts/install-photo-models.py`, 선택 이유·분류 기준·오류 수정·범위는 [photos.md](photos.md)를 참조하세요. 얼굴 사진은 외부로 보내지 않습니다.

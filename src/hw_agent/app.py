@@ -19,12 +19,14 @@ from .camera import camera
 from .motion import motion
 from . import oauth_gateway, voice
 from . import photos, resources
+from . import file_browser
 
 
 @asynccontextmanager
 async def lifespan(app):
     db.init()
     photos.init()
+    camera.restore_orientation()
     oauth.initialize()
     indexing.stop_event.clear()
     worker = threading.Thread(target=indexing.worker, daemon=True)
@@ -48,6 +50,7 @@ async def lifespan(app):
 
 app = FastAPI(title="Alter", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.include_router(photos.router)
+app.include_router(file_browser.router)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=__import__("os").getenv(
     "ALLOWED_HOSTS", "127.0.0.1,localhost,192.168.0.44,geb-v1,geb-v1.local").split(","))
 WEB = Path(__file__).parent / "web"
@@ -464,6 +467,18 @@ def motion_settings(body: MotionSettings):
 
 @app.get("/api/camera")
 def camera_status():
+    return camera.state()
+
+
+class CameraOrientation(BaseModel):
+    rotation: int = Field(strict=True)
+    mirror_horizontal: bool = Field(default=False, strict=True)
+    mirror_vertical: bool = Field(default=False, strict=True)
+
+
+@app.post("/api/camera/orientation")
+def camera_orientation(body: CameraOrientation):
+    camera.set_orientation(**body.model_dump())
     return camera.state()
 
 

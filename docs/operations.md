@@ -90,3 +90,10 @@ NTFS 압축과 쓰기 진단: SMB read only, 마운트 rw/ro, 소유권, 기존 
 ## 사진 작업자 설치/갱신
 
 `sudo apt-get install libimage-exiftool-perl` 후 `.venv/bin/pip install -r requirements.txt`, `.venv/bin/python scripts/install-photo-models.py`를 실행합니다. `deploy/alter-photos.service`를 `/etc/systemd/system/`에 설치하고 daemon-reload 후 `systemctl enable --now alter-photos`를 실행합니다. 웹 서비스를 재시작하면 별도 사진 폴더 메뉴가 나타납니다. `start.sh`와 부팅 복구는 사진 서비스/사진 전용 볼륨도 복원합니다. 데이터 관리·오류 처리·API는 [photos.md](photos.md)를 참조하세요.
+
+
+### 사진 모델 업데이트와 센서
+
+사진 모델은 `scripts/install-photo-models.py`를 Pi venv에서 실행해 FP32 CLIP 두 파일·YuNet·SFace의 고정 SHA256을 검증한 뒤 `alter-photos.service`를 재시작한다. MODEL_VERSION 변경 시 다음 스캔이 자동 점수를 재계산한다. `data/photo-progress.json`과 `data/photo-heartbeat`가 진행률/생존 정보이며 DB 잠금과 분리된다. private data와 모델은 Git에 올리지 않는다. 발견 중에도 조기 분류 결과를 볼 수 있으며 전체 목록 확인·분류가 끝나기 전 결과 수는 계속 변한다.
+
+카메라 방향은 설정 화면에서 저장하며 녹화 중에는 먼저 녹화를 중지해야 한다. 서버 재시작 시 DB의 camera_orientation을 복원한다. CPU 온도는 thermal sysfs, RAM 온도는 hwmon의 DIMM/DRAM 레이블이 있는 센서만 사용한다. 현재 Pi의 RAM 센서 없음 표시는 오류가 아니다.
