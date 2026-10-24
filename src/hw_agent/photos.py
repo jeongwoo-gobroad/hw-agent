@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from . import db, storage, config, preview
 from .photo_models import TOPICS
+from . import photo_runtime
 
 router = APIRouter(prefix="/api/photos")
 CACHE = config.DATA / "photos"
@@ -62,6 +63,13 @@ def safe_media(identifier, live=False):
         raise HTTPException(404, '연결된 Live Photo 영상이 없습니다.')
     candidate = base / relative
     storage.check_path(candidate)
+    current = base
+    for part in Path(relative).parts:
+        if part == '..' or Path(relative).is_absolute():
+            raise HTTPException(403, '사진 폴더 밖의 파일입니다.')
+        current = current / part
+        if current.is_symlink():
+            raise HTTPException(403, '심볼릭 링크는 열지 않습니다.')
     path = candidate.resolve(strict=True)
     storage.check_path(path)
     if not path.is_relative_to(base) or not path.is_file():
@@ -131,11 +139,12 @@ def pause():
 
 @router.get('/status')
 def status():
-    result = json.loads(db.state('photo_progress', '{}'))
+    result = photo_runtime.read() or json.loads(db.state('photo_progress', '{}'))
     result['paused'] = db.state('photo_paused', '0') == '1'
     result['total_media'] = db.rows('SELECT count(*) n FROM photos p WHERE NOT EXISTS(SELECT 1 FROM photos l WHERE l.root=p.root AND l.live_relative=p.relative)')[0]['n']
+    result['classified_media'] = db.rows("SELECT count(*) n FROM photos p WHERE scores!='{}' AND NOT EXISTS(SELECT 1 FROM photos l WHERE l.root=p.root AND l.live_relative=p.relative)")[0]['n']
     result['topics'] = {key: value[0] for key, value in TOPICS.items()}
-    result['worker_online'] = time.time() - float(db.state('photo_heartbeat', '0')) < 180
+    result['worker_online'] = photo_runtime.online()
     return result
 
 

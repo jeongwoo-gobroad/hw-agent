@@ -1,11 +1,12 @@
 /* Photo-only folders, timeline and editable local model suggestions. */
 let photoOffset=0,photoPerson=0,photoSelected=null,photoTopics={},photoPeople=[],photoJobVersion="",photoQueryVersion=0;
 const photoStage={idle:"대기",discovering:"파일 확인 중",classifying:"주제·얼굴 분류 중",complete:"처리 완료",paused:"일시정지",error:"작업 중단"};
-function photoProgress(s){return `${photoStage[s.stage]||"대기"} · ${s.done||0}/${s.total||0}개 처리${s.stage==="discovering"?` · ${s.discovered||0}개 발견`:""}${s.errors?` · 확인 필요 ${s.errors}개`:""}${s.error?" · "+s.error:""}${s.paused?" · 일시정지됨":""}${s.worker_online?"":" · 사진 작업자 연결 대기"}`;}
+function photoProgress(s){const counts=s.total?`${s.done||0}/${s.total}개 처리`:`${s.discovered||0}개 발견 · ${s.classified_media||0}개 분류 완료`;return `${photoStage[s.stage]||"대기"} · ${counts}${s.errors?` · 확인 필요 ${s.errors}개`:""}${s.error?" · "+s.error:""}${s.paused?" · 일시정지됨":""}${s.worker_online?"":" · 사진 작업자 연결 대기"}`;}
 window.photoDashboard=s=>{
   $("#photo-total").textContent=(s.photos.total_media||0).toLocaleString();$("#photo-progress").textContent=photoProgress(s.photos);
   $("#photo-progress-bar").max=Math.max(1,s.photos.total||0);$("#photo-progress-bar").value=s.photos.done||0;
   $("#resource-load").textContent=`${s.resources.cpu_percent??"—"}% · ${s.resources.ram_percent}%`;
+  $("#resource-temperature").textContent=`CPU ${s.resources.cpu_temperature==null?"계측 미지원":s.resources.cpu_temperature+"°C"} · RAM ${s.resources.ram_temperature==null?"온도 센서 없음":s.resources.ram_temperature+"°C"}`;
   $("#resource-gpu").textContent=s.resources.gpu_percent==null?"계측 미지원":s.resources.gpu_percent+"%";
   $("#resource-gpu-note").textContent=s.resources.gpu_note||"시스템 전체 GPU 사용률";
   $("#photo-job").textContent=photoProgress(s.photos);
@@ -80,3 +81,5 @@ action("#photo-people-tab",async()=>{$("#photo-people").hidden=false;await loadP
 action("#photo-scan",async()=>{await api("/photos/scan","POST",{});notify("사진 색인을 요청했습니다.");});
 action("#photo-pause",async()=>{await api("/photos/pause","POST",{});notify("현재 파일 처리 후 일시정지합니다. ‘지금 색인’으로 재개할 수 있습니다.");});
 action("#photo-refresh-drives",loadPhotoFolders);
+
+window.photoChatCards=items=>{const grid=el('div',undefined,'photo-grid');items.forEach(item=>{const card=button('',async()=>{const [state,people]=await Promise.all([api('/photos/status'),api('/photos/people')]);photoTopics=state.topics;photoPeople=people;await viewPhoto(item);},'photo-tile');const image=el('img');image.src=`/api/photos/items/${item.id}/thumbnail`;image.alt=item.name;image.loading='lazy';card.append(image,el('span',item.name,'photo-caption'));grid.append(card);});return grid;};

@@ -13,7 +13,8 @@ import numpy as np
 from PIL import Image, ImageOps
 from tqdm import tqdm
 from . import db, photos, storage
-from .photo_models import PhotoModels
+from . import photo_runtime
+from .photo_models import PhotoModels, MODEL_VERSION
 
 IMAGES = {'.jpg', '.jpeg', '.png', '.heic', '.heif', '.webp', '.tif', '.tiff', '.bmp'}
 VIDEOS = {'.mov', '.mp4', '.m4v', '.mkv', '.avi'}
@@ -21,21 +22,24 @@ stopping = False
 
 
 def progress(**values):
-    previous = json.loads(db.state('photo_progress', '{}'))
-    previous.update(values, updated=time.time())
-    db.set_state('photo_progress', json.dumps(previous))
-    db.set_state('photo_heartbeat', str(time.time()))
+    photo_runtime.write(**values)
+    photo_runtime.heartbeat()
 
 
 def paused():
     return stopping or db.state('photo_paused', '0') == '1'
 
 
+META_ARGS = ['exiftool', '-j', '-DateTimeOriginal', '-OffsetTimeOriginal', '-CreateDate',
+             '-ContentIdentifier', '-MediaGroupUUID', '-Duration', '-n']
+_metadata_cache = {}
+
+
 def metadata(path):
-    result = subprocess.run(['exiftool', '-j', '-DateTimeOriginal', '-OffsetTimeOriginal', '-CreateDate',
-                             '-ContentIdentifier', '-MediaGroupUUID', '-Duration', '-n', str(path)],
-                            capture_output=True, timeout=25, check=True)
-    data = json.loads(result.stdout)[0]
+    data = _metadata_cache.get(str(path))
+    if data is None:
+        result = subprocess.run([*META_ARGS, str(path)], capture_output=True, timeout=25, check=True)
+        data = json.loads(result.stdout)[0]
     raw = data.get('DateTimeOriginal') or data.get('CreateDate')
     captured, source = path.stat().st_mtime, '수정일 대체'
     if raw:
@@ -50,7 +54,7 @@ def metadata(path):
     return captured, source, data.get('ContentIdentifier') or data.get('MediaGroupUUID'), float(data.get('Duration') or 0)
 
 
-def discover(root):
+def discover(root, on_batch=None):
     base = photos.root_path(root)
     generation = uuid.uuid4().hex
     pairs = []
@@ -61,7 +65,31 @@ def discover(root):
         # 검사보다 먼저 제외하여 보호 폴더의 stat/resolve도 하지 않는다.
         dirs[:] = [d for d in dirs if not storage.excluded(Path(directory)/d)
                    and not d.startswith('.') and not (Path(directory)/d).is_symlink()]
-        for name in files:
+        def batches():
+            # 정확히 검증한 파일 인자만 묶는다. ExifTool에 재귀 탐색이나 와일드카드를 넘기지 않는다.
+            global _metadata_cache
+            for start in range(0, len(files), 64):
+                names = files[start:start+64]
+                pending = []
+                for name in names:
+                    path = Path(directory)/name
+                    if storage.excluded(path) or name.startswith('.') or path.suffix.lower() not in IMAGES|VIDEOS: continue
+                    if path.is_symlink(): continue
+                    prior = db.rows('SELECT modified,size FROM photos WHERE root=? AND relative=?',
+                                    (root['id'],str(path.relative_to(base))))
+                    stat = path.stat()
+                    if not prior or prior[0]['modified']!=stat.st_mtime or prior[0]['size']!=stat.st_size:
+                        pending.append(str(path))
+                _metadata_cache = {}
+                if pending and not paused():
+                    try:
+                        result = subprocess.run([*META_ARGS,*pending],capture_output=True,timeout=90)
+                        _metadata_cache = {i['SourceFile']:i for i in json.loads(result.stdout)}
+                    except (subprocess.SubprocessError,ValueError,KeyError): pass
+                yield from names
+                if on_batch is not None and not paused(): on_batch(root)
+            _metadata_cache = {}
+        for name in batches():
             if paused(): return False
             path = Path(directory)/name
             if storage.excluded(path) or name.startswith('.') or path.suffix.lower() not in IMAGES | VIDEOS:
@@ -184,7 +212,7 @@ def process(item, models):
             conn.execute('INSERT INTO photo_faces(id,photo,person,box) VALUES(?,?,?,?)', (face_id, item['id'], person, json.dumps(box)))
             crop.save(photos.CACHE / f'{face_id}.face.jpg', quality=90)
         conn.execute('UPDATE photos SET scores=?,labels=?,error=NULL WHERE id=?',
-                     (json.dumps(scores), json.dumps([k for k,v in scores.items() if v >= (.82 if k == 'cards' else .7)]), item['id']))
+                     (json.dumps(scores), json.dumps([k for k,v in scores.items() if v >= (.82 if k == 'cards' else .65 if k == 'buildings' else .7)]), item['id']))
         if item['live_relative']:
             conn.execute("UPDATE photos SET scores=? WHERE root=? AND relative=?",
                          (json.dumps({'paired': True}), item['root'], item['live_relative']))
@@ -193,17 +221,36 @@ def process(item, models):
 
 
 def run_scan():
+    if db.state('photo_model_version', '') != MODEL_VERSION:
+        with db.connect() as conn:
+            conn.execute("UPDATE photos SET scores='{}', error=NULL WHERE scores NOT LIKE '%\"paired\": true%'")
+        db.set_state('photo_model_version', MODEL_VERSION)
     progress(stage='discovering', running=True, discovered=0, done=0, total=0, errors=0, error=None)
     errors = 0
+    models = None
+    early_done = 0
+    def early_batch(root):
+        nonlocal models, early_done
+        pending = db.rows("SELECT * FROM photos WHERE root=? AND kind='photo' AND scores='{}' AND error IS NULL LIMIT 8", (root['id'],))
+        for item in pending:
+            if paused(): return
+            try:
+                if models is None: models = PhotoModels()
+                process(item, models)
+                early_done += 1
+            except InterruptedError: return
+            except Exception as exc:
+                with db.connect() as conn:
+                    conn.execute('UPDATE photos SET error=? WHERE id=?',(type(exc).__name__,item['id']))
+        progress(stage='discovering', early_done=early_done)
     for root in db.rows('SELECT * FROM photo_roots'):
-        try: discover(root)
+        try: discover(root, early_batch)
         except Exception as exc:
             errors += 1
             progress(error=f"{root['label']}: {getattr(exc, 'detail', type(exc).__name__)}")
     pending = db.rows("""SELECT * FROM photos p WHERE scores='{}' AND NOT EXISTS
       (SELECT 1 FROM photos l WHERE l.root=p.root AND l.live_relative=p.relative)""")
     progress(stage='classifying', total=len(pending), errors=errors)
-    models = None
     try:
         for i, item in enumerate(tqdm(pending, desc='Photo library', unit='media')):
             if paused(): break
@@ -229,14 +276,14 @@ def main():
     last = 0
     progress(stage='idle', running=False)
     while not stopping:
-        db.set_state('photo_heartbeat', str(time.time()))
+        photo_runtime.heartbeat()
         requested = float(db.state('photo_scan_requested', '0'))
         if not paused() and (requested > last or time.time()-last > 600):
             started = time.time()
             # 각 작업은 별도 자식으로 실행해 완료 후 모델 메모리를 돌려준다.
             child = subprocess.Popen([os.sys.executable, '-m', 'hw_agent.photo_worker', '--scan'])
             while child.poll() is None and not stopping:
-                db.set_state('photo_heartbeat', str(time.time()))
+                photo_runtime.heartbeat()
                 time.sleep(2)
             if stopping:
                 child.terminate()
@@ -244,7 +291,7 @@ def main():
                 except subprocess.TimeoutExpired: child.kill(); child.wait()
             if child.returncode:
                 progress(stage='error', running=False, error='사진 작업이 중단됐습니다. 다시 색인하면 이어서 처리합니다.')
-            last = started
+            last = started if not child.returncode else time.time()-570
         time.sleep(2)
 
 

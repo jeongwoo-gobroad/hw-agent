@@ -7,6 +7,7 @@ import uuid
 import httpx
 from fastapi import HTTPException
 from . import db, indexing, smartthings, generation
+from . import photo_search
 from .config import LLM_URL, LLM_HEADERS
 
 generation_lock = threading.Lock()
@@ -68,9 +69,11 @@ def respond(session_id, message, on_delta=None, cancelled=None):
             except HTTPException:
                 pass
             prompt = ('너는 한국어 개인 도우미 얼터다. 사용자 요청에 JSON으로 답하라. '
-                      '출력: {"intent":"search 또는 chat 또는 flow 또는 device","answer":"한국어 답변",'
+                      '출력: {"intent":"search 또는 photo_search 또는 chat 또는 flow 또는 device","answer":"한국어 답변",'
                       '"query":"핵심 검색어","ext":"","after":null,"before":null,"flow_id":null,'
-                      '"device_id":null,"command":null}. '
+                      '"device_id":null,"command":null,"person_name":null,"photo_topic":null}. '
+                      '사진 찾기는 photo_search. person_name은 요청에 명시된 사람 이름만 사용하고 신원을 추측하지 마라. '
+                      'photo_topic은 people,animals,buildings,documents,cards,food,nature 중 하나 또는 null. '
                       '파일 찾기는 search, 일상 대화나 설명은 chat, 등록된 자동화 실행 요청은 flow다. '
                       'ext는 점 없는 확장자, after/before는 YYYY-MM-DD 또는 null. JSON만 출력. '
                       '실제 파일이나 기기를 변경했다고 말하지 마라. Flow는 확인 버튼을 제안한다. '
@@ -95,7 +98,7 @@ def respond(session_id, message, on_delta=None, cancelled=None):
                 plan = json.loads(content)
                 if not isinstance(plan, dict):
                     raise ValueError("Expected object")
-                if plan.get("intent") not in {"search", "chat", "flow", "device", None}:
+                if plan.get("intent") not in {"search", "photo_search", "chat", "flow", "device", None}:
                     raise ValueError("Unknown intent")
                 query = str(plan.get("query", message))[:300]
                 mode = "local_llm"
@@ -110,14 +113,19 @@ def respond(session_id, message, on_delta=None, cancelled=None):
                     pass
             return None
         intent = plan.get("intent") or "search"
-        if intent == "search":
+        if photo_search.requested(message):
+            intent = 'photo_search'
+        if intent in {"search", "photo_search"}:
             plan = explicit_filters(message, plan)
         matches = indexing.search(query, ext=str(plan.get("ext") or "")[:20],
                                   after=date(plan.get("after")), before=date(plan.get("before"), True)) if intent == "search" else []
         answer = {"text": f"‘{query}’ 검색 결과 {len(matches)}개를 찾았습니다." if matches else
                   f"‘{query}’에 해당하는 색인 결과가 없습니다. 검색어나 대상 폴더를 확인하세요.",
                   "query": query, "mode": mode, "filters": plan, "files": matches[:8]}
-        if intent == "chat":
+        if intent == 'photo_search':
+            answer.update(photo_search.search(message,plan))
+            answer['files'] = []
+        elif intent == "chat":
             answer["text"] = str(plan.get("answer") or "무엇을 도와드릴까요?")[:4000]
         elif intent == "flow":
             candidate = next((f for f in db.rows("SELECT id,name FROM flows") if f["id"] == plan.get("flow_id")), None)

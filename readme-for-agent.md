@@ -111,8 +111,18 @@ repeat_seconds는 실행 시작 간격이 아니라 Flow 완료 후 최소 대�
 
 - `photos.py`: 독립 photo_roots UUID 등록·안전한 원본 해석·사진/앨범/사람 검색·수정 API. 일반 roots/SMB를 변경하지 않는다.
 - `photo_worker.py`: 별도 systemd 프로세스의 10분 주기 파일 발견, ExifTool 촬영일·Live 연결, 증분 분류, 체크포인트 진행률. 작업 자식 종료로 모델 메모리 반환.
-- `photo_models.py`: CLIP ONNX int8 다중 주제 + YuNet/SFace 특징 추출. PC GPU 및 원격 추론 없음.
+- `photo_models.py`: CLIP ONNX FP32 다중 주제 + YuNet/SFace 특징 추출. PC GPU 및 원격 추론 없음.
 - `resources.py`: /proc CPU/RAM 차분과 지원되는 DRM GPU 카운터. 미지원값은 null.
 - `web/static/photos.js`: 보관함/사람들/별도 폴더 메뉴·검색·미디어·수동 수정. 공통 status 5초 polling으로 진행률과 처리된 썸네일 갱신.
 - `deploy/alter-photos.service`, `scripts/install-photo-models.py`: 독립 자원 제한과 리비전/SHA256 고정 모델 설치.
 - 상세 DB·API·제한·검증은 [docs/photos.md](docs/photos.md). 모델/문서 변경 시 함께 갱신한다. 사진 DB/얼굴 특징/이름/시험 이미지/원본은 Git에 넣지 않는다.
+
+## Files / 사진 검색 / 센서 / 카메라 방향
+
+- `file_browser.py`: 인증된 `/api/library/entries` GET(root, path, offset, folders_only; 200개 페이지), `/preview` GET(root, path, download). 일반 `roots`만 허용하며 UUID 마운트·제외 이름·상대경로·심볼릭 링크를 검증합니다. 제외 이름은 resolve/stat보다 먼저 검사합니다. `files.js`가 지연 로딩 트리와 디렉터리 목록을 담당합니다.
+- `preview.py`: PDF inline, 코드/텍스트 최대 2MiB를 UTF-8 또는 CP949로 읽고 text/plain 캐시로 표시합니다. HTML 코드를 실행하지 않습니다. 기존 이미지/영상 변환 경로를 공유합니다.
+- `photo_search.py`: chat의 photo_search intent를 등록된 주제·사용자가 붙인 얼굴 이름·촬영 날짜에 연결합니다. 결과 JSON은 photos(최대8), photo_total, photo_filters를 추가하고 files는 비웁니다. photos.js의 photoChatCards가 기존 사진 상세 뷰어를 재사용합니다. 멀티모달 LLM 추론은 아닙니다.
+- `resources.py`: CPU 사용률/RAM 사용률과 cpu_temperature/ram_temperature(섭씨 또는 null), ram_temperature_note를 반환합니다. Pi RAM 센서 미지원은 null로 유지합니다.
+- `/api/camera/orientation` POST: rotation(strict int 0/90/180/270), mirror_horizontal/mirror_vertical(strict bool). camera_orientation DB 상태에 저장합니다. 녹화 중409, 잘못된 회전400, 타입오류422. 프레임 변환 후 MJPEG·녹화·motion에 동일 프레임을 전달합니다. 방향 변경 시 hold 누적을 지우지만 기존 실행 쿨다운은 유지합니다.
+- `photo_runtime.py`: 파일 기반 progress/heartbeat. `photo_worker.py`는 64개 ExifTool 메타데이터 배치, 발견 중8개씩 조기 분류, MODEL_VERSION 변경 시 자동 점수 무효화. FP32 CLIP 모델 파일과 고정 해시는 install-photo-models.py에서 관리합니다.
+- 회귀 검증: tests/test_explorer_camera.py, tests/test_photos.py. 실제 사용자 사진/얼굴 점검물은 data 또는 Git 밖에만 두고 커밋하지 않습니다.

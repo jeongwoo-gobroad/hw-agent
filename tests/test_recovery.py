@@ -12,7 +12,7 @@ os.environ.setdefault("DASHBOARD_USERNAME", "test")
 os.environ.setdefault("DASHBOARD_PASSWORD", "test-password")
 os.environ.setdefault("SESSION_SECRET", "a" * 48)
 from fastapi import HTTPException
-from hw_agent import db
+from hw_agent import db, photos
 
 spec = importlib.util.spec_from_file_location("recovery", Path(__file__).parents[1] / "scripts/recover.py")
 recovery = importlib.util.module_from_spec(spec)
@@ -22,8 +22,10 @@ spec.loader.exec_module(recovery)
 class RecoveryTests(unittest.TestCase):
     def setUp(self):
         db.init()
+        photos.init()
         with db.connect() as connection:
             connection.execute("DELETE FROM roots")
+            connection.execute("DELETE FROM photo_roots")
         db.set_state("shares", "{}")
 
     def test_mounts_share_only_volume_without_index_root(self):

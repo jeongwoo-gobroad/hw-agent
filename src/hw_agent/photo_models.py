@@ -6,13 +6,25 @@ from .config import BASE
 
 TOPICS = {
     "people": ("사람", "a photograph of people, a person", "an empty room or an empty landscape"),
-    "animals": ("동물", "a photograph of an animal, pet, dog, cat or bird", "a photograph of furniture and household objects"),
+    "animals": ("동물", "a photograph of an animal, pet, dog, cat or bird", "a photo of a city, buildings or a landscape"),
     "buildings": ("건물", "a photograph of buildings, houses or architecture", "a close up photograph of a small object"),
     "documents": ("서류", "a photograph of a printed document, receipt or paper with text", "a photograph of a landscape or a human face"),
     "cards": ("카드", "a close up photograph of a flat rectangular credit card, ID card or business card", "a photograph of a landscape or a human face"),
     "food": ("음식", "a photograph of food or a meal", "a photograph of furniture or a building"),
     "nature": ("자연", "a photograph of a natural landscape, trees, mountain or ocean", "an indoor scene"),
 }
+
+PROMPTS = {
+    'people': ['a photo of a person', 'a photo of a crowd of people', 'a photo of pedestrians'],
+    'animals': ['a photo of a dog', 'a photo of a cat', 'a photo of a bird', 'a photo of wild animals'],
+    'buildings': ['a photo of buildings', 'a photo of a city skyline', 'a photo of a temple',
+                  'a photo of a street with buildings', 'a photo of a bridge', 'a photo of a tower'],
+    'documents': ['a photo of a printed document', 'a photo of a receipt', 'a scanned page of text'],
+    'cards': ['a photo of a credit card', 'a photo of an identification card', 'a photo of a business card'],
+    'food': ['a photo of food', 'a photo of a meal'],
+    'nature': ['a photo of a natural landscape', 'a photo of a forest', 'a photo of the ocean', 'a photo of a mountain'],
+}
+MODEL_VERSION = 'clip-fp32-ensemble-v4'
 
 
 class PhotoModels:
@@ -27,11 +39,18 @@ class PhotoModels:
         options.intra_op_num_threads = 1
         options.inter_op_num_threads = 1
         options.enable_cpu_mem_arena = False
-        text = ort.InferenceSession(str(root / "clip-text.onnx"), options, providers=["CPUExecutionProvider"])
+        text = ort.InferenceSession(str(root / "clip-text-fp32.onnx"), options, providers=["CPUExecutionProvider"])
         tokenizer = Tokenizer.from_file(str(root / "tokenizer.json"))
         tokenizer.enable_padding(length=77, pad_id=49407, pad_token="<|endoftext|>")
         tokenizer.enable_truncation(max_length=77)
-        encoded = tokenizer.encode_batch([p for row in TOPICS.values() for p in row[1:]])
+        prompts = []
+        self.prompt_slices = {}
+        for key, row in TOPICS.items():
+            start = len(prompts)
+            prompts.extend(PROMPTS[key])
+            self.prompt_slices[key] = (start, len(prompts))
+            prompts.append(row[2])
+        encoded = tokenizer.encode_batch(prompts)
         inputs = {"input_ids": np.array([e.ids for e in encoded], dtype=np.int64),
                   "attention_mask": np.array([e.attention_mask for e in encoded], dtype=np.int64)}
         outputs = text.run(None, {i.name: inputs[i.name] for i in text.get_inputs()})
@@ -39,8 +58,8 @@ class PhotoModels:
         self.text = outputs[names.index("text_embeds")]
         self.text /= np.linalg.norm(self.text, axis=1, keepdims=True)
         del text
-        self.vision = ort.InferenceSession(str(root / "clip-vision.onnx"), options, providers=["CPUExecutionProvider"])
-        self.detector = cv2.FaceDetectorYN.create(str(root / "yunet.onnx"), "", (640, 640), .85, .3, 100)
+        self.vision = ort.InferenceSession(str(root / "clip-vision-fp32.onnx"), options, providers=["CPUExecutionProvider"])
+        self.detector = cv2.FaceDetectorYN.create(str(root / "yunet.onnx"), "", (640, 640), .87, .3, 100)
         self.recognizer = cv2.FaceRecognizerSF.create(str(root / "sface.onnx"), "")
 
     def analyze(self, image):
@@ -54,8 +73,9 @@ class PhotoModels:
         similarity = self.text @ feature
         scores = {}
         # 각 주제를 따로 비교하므로 한 사진에 여러 주제를 붙일 수 있다.
-        for i, key in enumerate(TOPICS):
-            positive, negative = similarity[i*2:i*2+2]
+        for key in TOPICS:
+            start, end = self.prompt_slices[key]
+            positive, negative = max(similarity[start:end]), similarity[end]
             scores[key] = round(float(1 / (1 + np.exp(-30 * (positive-negative)))), 4)
         small = image.copy()
         small.thumbnail((960, 960))
