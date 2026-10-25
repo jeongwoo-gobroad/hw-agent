@@ -19,3 +19,4 @@ six>=1.17,<2
 lxml>=5,<7
 Authlib>=1.6,<2
 cryptography>=44,<48
+captcha>=0.7,<1

@@ -22,10 +22,10 @@ def metrics():
 
 def main():
     token, csrf = auth.login(config.USERNAME, config.PASSWORD, "motion-verification")
-    headers = {"Cookie": "alter_session=" + token, "X-CSRF-Token": csrf, "Origin": "http://127.0.0.1:8080"}
+    headers = {"Cookie": "alter_session=" + token, "X-CSRF-Token": csrf, "Origin": "http://127.0.0.1:11977"}
     report = {"started_at": time.time(), "before": metrics(), "status": "running"}
     output = config.DATA / "motion-load-report.json"
-    with httpx.Client(base_url="http://127.0.0.1:8080", headers=headers, timeout=60) as client:
+    with httpx.Client(base_url="http://127.0.0.1:11977", headers=headers, timeout=60) as client:
         prior = client.get("/api/motion").json()
         camera_before = client.get("/api/camera").json()
         try:

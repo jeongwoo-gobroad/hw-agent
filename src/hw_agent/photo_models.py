@@ -1,8 +1,11 @@
 """CPU-only, local CLIP topics and YuNet/SFace face features."""
 from pathlib import Path
+import hashlib
+import json
+import os
 import numpy as np
 from PIL import Image, ImageOps
-from .config import BASE
+from .config import BASE, DATA
 
 TOPICS = {
     "people": ("사람", "a photograph of people, a person", "an empty room or an empty landscape"),
@@ -39,10 +42,6 @@ class PhotoModels:
         options.intra_op_num_threads = 1
         options.inter_op_num_threads = 1
         options.enable_cpu_mem_arena = False
-        text = ort.InferenceSession(str(root / "clip-text-fp32.onnx"), options, providers=["CPUExecutionProvider"])
-        tokenizer = Tokenizer.from_file(str(root / "tokenizer.json"))
-        tokenizer.enable_padding(length=77, pad_id=49407, pad_token="<|endoftext|>")
-        tokenizer.enable_truncation(max_length=77)
         prompts = []
         self.prompt_slices = {}
         for key, row in TOPICS.items():
@@ -50,14 +49,29 @@ class PhotoModels:
             prompts.extend(PROMPTS[key])
             self.prompt_slices[key] = (start, len(prompts))
             prompts.append(row[2])
-        encoded = tokenizer.encode_batch(prompts)
-        inputs = {"input_ids": np.array([e.ids for e in encoded], dtype=np.int64),
-                  "attention_mask": np.array([e.attention_mask for e in encoded], dtype=np.int64)}
-        outputs = text.run(None, {i.name: inputs[i.name] for i in text.get_inputs()})
-        names = [o.name for o in text.get_outputs()]
-        self.text = outputs[names.index("text_embeds")]
-        self.text /= np.linalg.norm(self.text, axis=1, keepdims=True)
-        del text
+        signature=hashlib.sha256(json.dumps([MODEL_VERSION,prompts]).encode()).hexdigest()[:20]
+        cache=DATA/f'photo-text-{signature}.npy'
+        try:
+            self.text=np.load(cache,allow_pickle=False)
+            if self.text.shape!=(len(prompts),512) or not np.isfinite(self.text).all():raise ValueError('Invalid prompt cache')
+        except (OSError,ValueError):
+            text=ort.InferenceSession(str(root/'clip-text-fp32.onnx'),options,providers=['CPUExecutionProvider'])
+            tokenizer=Tokenizer.from_file(str(root/'tokenizer.json'))
+            tokenizer.enable_padding(length=77,pad_id=49407,pad_token='<|endoftext|>')
+            tokenizer.enable_truncation(max_length=77)
+            features=[]
+            # 고정 주제 문장은 작은 배치로 계산하고 다음 작업자에서도 재사용한다.
+            for start in range(0,len(prompts),4):
+                encoded=tokenizer.encode_batch(prompts[start:start+4])
+                inputs={'input_ids':np.array([e.ids for e in encoded],dtype=np.int64),
+                        'attention_mask':np.array([e.attention_mask for e in encoded],dtype=np.int64)}
+                features.append(text.run(['text_embeds'],{i.name:inputs[i.name] for i in text.get_inputs()})[0])
+            self.text=np.concatenate(features)
+            self.text/=np.linalg.norm(self.text,axis=1,keepdims=True)
+            temporary=cache.with_suffix(f'.{os.getpid()}.tmp')
+            with temporary.open('wb') as output:np.save(output,self.text,allow_pickle=False)
+            temporary.replace(cache)
+            del text
         self.vision = ort.InferenceSession(str(root / "clip-vision-fp32.onnx"), options, providers=["CPUExecutionProvider"])
         self.detector = cv2.FaceDetectorYN.create(str(root / "yunet.onnx"), "", (640, 640), .87, .3, 100)
         self.recognizer = cv2.FaceRecognizerSF.create(str(root / "sface.onnx"), "")

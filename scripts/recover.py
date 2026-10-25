@@ -92,7 +92,7 @@ def main():
     status = {"checked_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "checks": {}}
     code = 0
     steps = [
-        ("웹 서버", lambda: wait_for(lambda: healthy("http://127.0.0.1:8080/health"))),
+        ("웹 서버", lambda: wait_for(lambda: healthy("http://127.0.0.1:11977/health"))),
         ("언어 모델", lambda: wait_for(lambda: healthy(config.LLM_URL + "/health", config.LLM_HEADERS))),
         ("등록 드라이브·공유", restore_storage),
         ("ngrok HTTPS", lambda: wait_for(tunnel, 60)),
@@ -126,7 +126,7 @@ def main():
     temporary = config.DATA / "startup-status.json.tmp"
     temporary.write_text(json.dumps(status, ensure_ascii=False, indent=2))
     temporary.replace(config.DATA / "startup-status.json")
-    print("내부 대시보드: http://192.168.0.44:8080/", flush=True)
+    print("내부 대시보드: http://192.168.0.44:11977/", flush=True)
     print("준비 완료." if code == 0 else "일부 항목에 확인이 필요합니다.", flush=True)
     return code
 

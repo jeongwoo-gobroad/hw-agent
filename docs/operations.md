@@ -4,13 +4,14 @@
 
 검증 환경 Debian13 ARM64/Python3.13.5. `scripts/install.sh`는 apt의 python3-venv/python3-picamera2/ffmpeg/samba/smbclient/OpenBLAS/cmake/g++/curl 개발 헤더를 설치하고 system-site-packages venv를 구성합니다. HEIF 빌드가 필요하면 libheif-dev도 설치합니다. `requirements-pi.lock.txt`는 pip --local 스냅샷이며 OS 패키지까지 고정하지 않습니다.
 
-.env는 root 프로젝트에 두고 chmod600, data는700. 최소 DASHBOARD_USERNAME/DASHBOARD_PASSWORD/32자 이상 무작위 SESSION_SECRET이 필요합니다. 내부망 HTTP 호환을 위해 SECURE_COOKIE=false를 유지하지만 HTTPS 요청으로 발급되는 세션 쿠키는 코드에서 항상 Secure로 설정합니다. 서비스는 전체 인터페이스8080에 바인딩하며 인터넷 포트포워딩을 설정하지 않습니다. ngrok을 통해 외부 HTTPS 접근을 제공합니다. ALLOWED_HOSTS에 정확한 ngrok 호스트를 추가하며 Uvicorn은127.0.0.1에서 오는 proxy header만 신뢰합니다. 브라우저 Origin/CSRF 검증은 외부 HTTPS 기준으로 동작합니다. OAuth URL의 코드가 남지 않도록 access log는 끕니다.
+.env는 root 프로젝트에 두고 chmod600, data는700. 최소 DASHBOARD_USERNAME/DASHBOARD_PASSWORD/32자 이상 무작위 SESSION_SECRET이 필요합니다. 내부망 HTTP 호환을 위해 SECURE_COOKIE=false를 유지하지만 HTTPS 요청으로 발급되는 세션 쿠키는 코드에서 항상 Secure로 설정합니다. Uvicorn은127.0.0.1:18080에만 바인딩하고 nginx가 내부11977/외부8080을 제공합니다. 공유기에서 전달할 포트는8080만이며11977은포워딩하지 않습니다. ngrok을 통해 외부 HTTPS 접근을 제공합니다. ALLOWED_HOSTS에 정확한 ngrok 호스트를 추가하며 Uvicorn은127.0.0.1에서 오는 proxy header만 신뢰합니다. 브라우저 Origin/CSRF 검증은 외부 HTTPS 기준으로 동작합니다. OAuth URL의 코드가 남지 않도록 access log는 끕니다.
 
 ## 서비스
 
 | 서비스 | 주소 | 메모리 상한 |
 |---|---|---|
-| alter | 내부망8080 + ngrok HTTPS | 1200MiB + swap256MiB |
+| nginx | 내부11977 / 외부8080 → loopback18080 | OS 관리 |
+| alter | 127.0.0.1:18080 | 1200MiB + swap256MiB |
 | alter-llm | 127.0.0.1:8081 | 5800MiB + swap128MiB |
 | alter-oauth | 127.0.0.1:8082 | 256MiB |
 | alter-ngrok | 고정 ngrok HTTPS→8080 | 192MiB |
@@ -56,7 +57,7 @@ Windows `scripts/deploy.py`는 git 추적 소스를 SFTP 전송하고 hash를 �
 
 ## 터치 디스플레이 운영
 
-Pi Chromium 시작 주소는 http://127.0.0.1:8080/panel 입니다. 업데이트 후 기존 창을 새로고침하면 전용 터치 UI가 적용됩니다. DSI는720×1280에270도 회전하여 가로1280×720으로 설정되어 있습니다. OS에서 인식되는 마이크가 필요하며, 원격 Chrome에서는 그 컴퓨터의 마이크를 사용합니다. 녹음은 Pi로 전송되고 처리 뒤 삭제됩니다. LAN IP의 HTTP에서는 브라우저 마이크가 제한되므로 ngrok HTTPS 또는 Pi localhost를 사용하세요.
+Pi Chromium 시작 주소는 http://127.0.0.1:11977/panel 입니다. 업데이트 후 기존 창을 새로고침하면 전용 터치 UI가 적용됩니다. DSI는720×1280에270도 회전하여 가로1280×720으로 설정되어 있습니다. OS에서 인식되는 마이크가 필요하며, 원격 Chrome에서는 그 컴퓨터의 마이크를 사용합니다. 녹음은 Pi로 전송되고 처리 뒤 삭제됩니다. LAN IP의 HTTP에서는 브라우저 마이크가 제한되므로 ngrok HTTPS 또는 Pi localhost를 사용하세요.
 
 ‘음성 입력’은 전사 내용을 확인하고 보내며, ‘얼터 호출 대기’는 호출어와 요청을 함께 인식하면 챗봇으로 전달합니다. 최종 기기 실행 확인은 유지합니다. 처리 중에는 계속 듣지 않으며 6초 녹음과 전사를 반복합니다. 녹음 종료 버튼/호출 대기 끄기/페이지 숨김으로 마이크를 종료합니다. 소음 환경의 호출 오탐률은 검증되지 않았습니다.
 
@@ -94,7 +95,7 @@ NTFS 압축과 쓰기 진단: SMB read only, 마운트 rw/ro, 소유권, 기존 
 
 ### 사진 모델 업데이트와 센서
 
-사진 모델은 `scripts/install-photo-models.py`를 Pi venv에서 실행해 FP32 CLIP 두 파일·YuNet·SFace의 고정 SHA256을 검증한 뒤 `alter-photos.service`를 재시작한다. MODEL_VERSION 변경 시 다음 스캔이 자동 점수를 재계산한다. `data/photo-progress.json`과 `data/photo-heartbeat`가 진행률/생존 정보이며 DB 잠금과 분리된다. private data와 모델은 Git에 올리지 않는다. 발견 중에도 조기 분류 결과를 볼 수 있으며 전체 목록 확인·분류가 끝나기 전 결과 수는 계속 변한다.
+사진 모델은 `scripts/install-photo-models.py`를 Pi venv에서 실행해 FP32 CLIP 두 파일·YuNet·SFace의 고정 SHA256을 검증한 뒤 `alter-photos.service`를 재시작한다. MODEL_VERSION 변경 시 다음 스캔이 자동 점수를 재계산한다. DB state.photo_progress와 data/photo-heartbeat가 진행률/생존 정보이다. 결과를 작은 트랜잭션으로 커밋해 긴 전체 FTS 교체 잠금을 제거했다. private data와 모델은 Git에 올리지 않는다. 완료한 기존 결과는 목록 확인 중에도 계속 제공한다. 새 결과는 메타데이터 단계 후 항목별로 반영한다.
 
 카메라 방향은 설정 화면에서 저장하며 녹화 중에는 먼저 녹화를 중지해야 한다. 서버 재시작 시 DB의 camera_orientation을 복원한다. CPU 온도는 thermal sysfs, RAM 온도는 hwmon의 DIMM/DRAM 레이블이 있는 센서만 사용한다. 현재 Pi의 RAM 센서 없음 표시는 오류가 아니다.
 
@@ -103,6 +104,15 @@ NTFS 압축과 쓰기 진단: SMB read only, 마운트 rw/ro, 소유권, 기존 
 
 개요의 파일/사진 카드에 처리 수 / 전체 대상 수, 백분율, 예상 남은 시간을 5초마다 표시합니다. 사전 집계는 등록된 루트만 읽으며 제외 디렉터리·숨김 항목·심볼릭 링크를 진입 전에 건너뜁니다. 집계 중에는 전체가 아직 확정되지 않았으므로 진행 막대와 ETA를 미확정으로 표시합니다. 탐색 도중 파일이 추가·삭제되면 이번 스캔의 분모와 실제 처리 수가 달라질 수 있으며 다음 스캔에서 갱신됩니다.
 
-파일은 이번 검사에서 확인한 파일(변경 없는 파일 포함) / 사전 발견 파일 수입니다. 검색 DB 반영은 별도 단계로 표시하며 이 단계의 ETA는 계산하지 않습니다. 기존 검색 가능한 파일 수는 큰 숫자로 계속 표시합니다.
+파일은 이번 검사에서 확인한 파일(변경 없는 파일 포함) / 사전 발견 파일 수입니다. 결과는 항목별로 즉시 반영하고, 마지막 삭제 정리 단계에는 ETA를 계산하지 않습니다. 기존 검색 가능한 파일 수는 큰 숫자로 계속 표시합니다.
 
-사진은 두 단계입니다. 파일 정보 확인은 확인한 미디어 파일 / 사전 발견 미디어 파일 수이며 이 단계의 ETA는 **파일 정보 확인 단계**의 예상치입니다. 발견 중 조기 분류에 든 시간도 이 단계 측정에 포함됩니다. 주제·얼굴 분류로 전환하면 Live Photo 중복 영상을 제외한 항목 수가 분모이고, 기존 완료 항목 + 이번 시도 항목이 분자입니다. 오류 항목은 확인 필요 수로 따로 표시합니다. ETA는 해당 단계의 실제 경과 시간과 처리 표본으로 계산하며 전체 작업의 고정 마감 시간이 아닙니다. 사진/영상 크기·모델 초기화·동시 작업에 따라 변합니다. 최소 3개/2초 이전에는 계산 중, 일시정지·오류·작업자 단절 시 ETA 대기로 표시합니다.
+사진은 두 단계입니다. 파일 정보 확인은 확인한 미디어 파일 / 사전 발견 미디어 파일 수이며 이 단계의 ETA는 **파일 정보 확인 단계**의 예상치입니다. 주제·얼굴 분류로 전환하면 Live Photo 중복 영상을 제외한 항목 수가 분모이고, 기존 완료 항목 + 이번 시도 항목이 분자입니다. 오류 항목은 확인 필요 수로 따로 표시합니다. ETA는 해당 단계의 실제 경과 시간과 처리 표본으로 계산하며 전체 작업의 고정 마감 시간이 아닙니다. 사진/영상 크기·모델 초기화·동시 작업에 따라 변합니다. 최소 3개/2초 이전에는 계산 중, 일시정지·오류·작업자 단절 시 ETA 대기로 표시합니다.
+
+
+## 접속 보호와 증분 색인
+
+`bash scripts/install-web-entrypoints.sh`로 nginx 설정을 설치합니다. 기존 기본 사이트 심볼릭 링크만 제거하며 다른 사이트 설정은 보존합니다. nginx 설정 검사 후 재시작합니다. 내부11977의 허용 대역은 현재192.168.0.0/24이며 네트워크를 변경하면 deploy/alter-nginx.conf도 수정해야 합니다. 변경 후 내부11977과 외부8080의 /health 및 로그인 경계를 각각 검증하세요.
+
+공인 IP/DDNS로 접속할 때는 해당 호스트(스킴·포트 제외)를 .env의 ALLOWED_HOSTS에 추가하고 alter를 재시작합니다. 공유기 NAT 설정과 실제 외부망 접속은 별도 검증 대상입니다. 일반 HTTP는 비밀번호·세션을 암호화하지 않습니다. ngrok HTTPS는 기존 OAuth 콜백과 함께 유지되며 외부 CAPTCHA 보호를 사용합니다.
+
+정책, DB 백업/마이그레이션, 최초 해시 생성, 중단 재개와 오류 재시도는 [indexing-security.md](indexing-security.md)를 참조하세요. start.sh는 nginx도 복구하고 내부11977/panel을 엽니다.

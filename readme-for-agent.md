@@ -13,7 +13,7 @@ README.md는 실제 제공 기능과 사용자 동선, docs/acceptance.md는 검
 | auth.py | 로그인 속도 제한, 서버 세션/CSRF, 자격증명 fingerprint; 경계 테스트 |
 | db.py | SQLite WAL 스키마/트랜잭션; 재시작 시 실행 중 Flow를 interrupted로 전환 |
 | storage.py | 외장 파티션/폴더 경계, UUID 기준 루트 재연결, SMB 복원; alter-disk/alter-smb |
-| indexing.py | 60초 대조, 72시간 재생성, staging 원자 교체, FTS5 BM25/TF-IDF; 추출기 버전 |
+| indexing.py | 10분 대조, SHA-256/정밀 stat 비교, 항목 단위 DB/FTS 커밋, FTS5 BM25/TF-IDF; 추출기 버전 |
 | extract.py | 자원 제한된 별도 프로세스 문서 추출; XML/ZIP 제한과 HWP subprocess |
 | preview.py | HEIF/Pillow와 FFmpeg 프록시, 캐시 한도/만료; 미디어 API/UI |
 | chat.py | 세션/히스토리, JSON intent, 검색 카드/확인 제안, 명시 날짜·확장자 규칙 |
@@ -33,7 +33,7 @@ README.md는 실제 제공 기능과 사용자 동선, docs/acceptance.md는 검
 
 파일 접근은 등록 root의 현재 UUID 마운트를 확인하고 resolve한 경로가 그 안에 있는지 검증합니다. 색인 경로/LLM 출력은 파일 접근 허가 자체가 아닙니다. 오프라인 장치 메타데이터는 보존하지만 다운로드/미리보기는 차단합니다. 재연결 때 UUID와 상대경로로 복원합니다. 마운트 지점 변경은 SMB 경로에도 반영합니다.
 
-추출기는 별도 Python subprocess로 실행하며 입력/압축 해제/메모리/시간을 제한합니다. staging 테이블의 완성된 루트만 활성 색인과 FTS에 반영합니다. 기존 파일 원문을 삭제하는 로직을 색인 보존기간과 혼동하지 마세요. 추출 알고리즘 변경 시 EXTRACTOR_VERSION을 올려 기존 내용도 재추출합니다.
+추출기는 별도 Python subprocess로 실행하며 입력/압축 해제/메모리/시간을 제한합니다. scan_entries 완료 표시와 files/FTS 갱신을 한 트랜잭션으로 커밋합니다. 기존 staging은 최초 이관 시 캐시로 소비하며 시작 시 비우지 않습니다. 기존 파일 원문을 삭제하는 로직을 색인 보존기간과 혼동하지 마세요. 추출 알고리즘 변경 시 EXTRACTOR_VERSION을 올려 기존 내용도 재추출합니다.
 
 LLM은 별도 llama-server 프로세스입니다. 대화는 전체 저장하지만 현재 추론에는 최근 두 메시지(각 250자)와 최대 1200자 요청을 전달합니다. 초기 2048 context 설정을 고려한 제한이며 장기 기억 요약 기능은 없습니다. 모델 실패 시 keyword_fallback을 명시합니다. 파일/기기/Flow의 실제 실행 권한을 모델에 맡기지 않고, UI에서 확인 후 API가 재검증합니다.
 
@@ -92,7 +92,7 @@ roots.relative_path와 UNIQUE(uuid,relative_path)가 등록의 영구 식별자�
 
 SMB/색인 선택 분리: app.js browse(path,target)는 index/share별 독립 컨테이너를 사용합니다. loadRoots는 SMB 폼을 변경하지 않습니다. roots 테이블은 검색 대상, state.shares는 공유 대상이며 API는 각각 독립입니다. recover.restore_storage는 roots와 shares의 UUID 합집합만 마운트합니다. 설치 시 wsdd2를 활성화하여 Windows WSD 검색을 지원합니다.
 
-오프라인 해제: SMB remove는 이름 검증 후 설정 파일만 제거하며 external_path/lsblk를 호출하지 않습니다. DELETE shares의 path는 하위 호환용 선택 인자입니다. roots 삭제는 다른 색인 작업 때문에 차단하지 않습니다. scanner는 각 디렉터리 및 staging 저장/최종 게시 전에 root 존재를 확인하며, 저장/게시 검사는 BEGIN IMMEDIATE로 삭제와 직렬화합니다. 해당 root에 카메라 녹화 중이면 삭제를 차단합니다. EXCLUDED_DIRECTORY_NAMES는 casefold 폴더명 집합으로 resolve 및 os.walk 하강 전에 차단합니다. 배포 장비의 금지 이름은 private .env에서 관리하며 진단에서 해당 하위 경로를 순회하면 안 됩니다.
+오프라인 해제: SMB remove는 이름 검증 후 설정 파일만 제거하며 external_path/lsblk를 호출하지 않습니다. DELETE shares의 path는 하위 호환용 선택 인자입니다. roots 삭제는 다른 색인 작업 때문에 차단하지 않습니다. scanner는 각 디렉터리 배치 및 항목 커밋 전에 root 존재를 확인하며, 저장/게시 검사는 BEGIN IMMEDIATE로 삭제와 직렬화합니다. 해당 root에 카메라 녹화 중이면 삭제를 차단합니다. EXCLUDED_DIRECTORY_NAMES는 casefold 폴더명 집합으로 resolve 및 os.walk 하강 전에 차단합니다. 배포 장비의 금지 이름은 private .env에서 관리하며 진단에서 해당 하위 경로를 순회하면 안 됩니다.
 
 
 ## 상시 감지 구조
@@ -124,7 +124,7 @@ repeat_seconds는 실행 시작 간격이 아니라 Flow 완료 후 최소 대�
 - `photo_search.py`: chat의 photo_search intent를 등록된 주제·사용자가 붙인 얼굴 이름·촬영 날짜에 연결합니다. 결과 JSON은 photos(최대8), photo_total, photo_filters를 추가하고 files는 비웁니다. photos.js의 photoChatCards가 기존 사진 상세 뷰어를 재사용합니다. 멀티모달 LLM 추론은 아닙니다.
 - `resources.py`: CPU 사용률/RAM 사용률과 cpu_temperature/ram_temperature(섭씨 또는 null), ram_temperature_note를 반환합니다. Pi RAM 센서 미지원은 null로 유지합니다.
 - `/api/camera/orientation` POST: rotation(strict int 0/90/180/270), mirror_horizontal/mirror_vertical(strict bool). camera_orientation DB 상태에 저장합니다. 녹화 중409, 잘못된 회전400, 타입오류422. 프레임 변환 후 MJPEG·녹화·motion에 동일 프레임을 전달합니다. 방향 변경 시 hold 누적을 지우지만 기존 실행 쿨다운은 유지합니다.
-- `photo_runtime.py`: 파일 기반 progress/heartbeat. `photo_worker.py`는 64개 ExifTool 메타데이터 배치, 발견 중8개씩 조기 분류, MODEL_VERSION 변경 시 자동 점수 무효화. FP32 CLIP 모델 파일과 고정 해시는 install-photo-models.py에서 관리합니다.
+- `photo_runtime.py`: SQLite state 진행률과 파일 heartbeat. `photo_worker.py`는 DB 디렉터리/파일 큐, 변경 파일만 ExifTool 호출, 주제·얼굴 항목별 버전/완료 상태, 128개 이하 분류 자식 프로세스. FP32 CLIP 모델 파일과 고정 해시는 install-photo-models.py에서 관리합니다.
 - 회귀 검증: tests/test_explorer_camera.py, tests/test_photos.py. 실제 사용자 사진/얼굴 점검물은 data 또는 Git 밖에만 두고 커밋하지 않습니다.
 
 
@@ -133,3 +133,15 @@ repeat_seconds는 실행 시작 간격이 아니라 Flow 완료 후 최소 대�
 `progress.py`는 보호 경계를 지키는 사전 파일 개수 집계와 현재 작업 표본 기반 Estimate를 제공합니다. 파일 indexing.status에는 stage, total, total_known, files, eta_seconds가 추가됩니다. 사진 진행 파일에는 inventory_total, discovery_complete, processed_base, media_total, eta_seconds가 추가됩니다. 사진 discover의 discovered_offset은 여러 루트의 누적 발견 수를 유지합니다. 사진 분류 분자는 processed_base+done, 분모는 media_total이며 Live 연결 영상은 별도 항목으로 세지 않습니다. photos.js가 두 카드의 백분율/ETA와 미확정·중단 상태를 렌더링합니다. ETA는 단계 단위이고 FTS 반영 시간의 확정 예측이 아닙니다. 기존 done/total API 필드는 이번 분류 작업 수 의미를 유지합니다. `tests/test_progress.py`가 제외 경계·확장자·심볼릭 링크·중단·ETA 초기 표본과 계산을 검사합니다.
 
 사진 상태 집계/목록의 Live Photo 제외 NOT EXISTS 조인은 photos_live_pair(root,live_relative) 인덱스가 필요합니다. 이 인덱스가 없으면 대형 라이브러리 상태 조회가 제곱 규모로 느려져 대시보드 polling이 밀립니다.
+
+## DB 증분 작업과 접속 분리 (2026-10-26)
+
+- `inventory.py`: 작업/디렉터리/파일 큐, UUID+상대경로 정체성, SHA-256 스트리밍과 전후 stat 검증. scan_entries 완료와 결과 저장은 같은 DB 트랜잭션이다. 재시작 시 완료 디렉터리/파일을 다시 처리하지 않는다. 금지 폴더 이름은 stat·symlink 검사 전에 제외한다.
+- `photo_worker.py`: 메타데이터 검사와 분류를 분리한다. 해시 동일 시 EXIF·주제·얼굴 재사용, 변경 시 해당 사진만 무효화. analysis_version으로 모델 변경을 감지한다. 재시도 시각과 활성 항목을 DB에 저장한다. 사진이 크거나 모델이 실패해 자식이 종료되면 해당 항목은 지연 재시도하고 다음 항목을 진행한다.
+- `photo_models.py`: 고정 주제 문장 특징은 버전+문장 해시별 NumPy 캐시, 최초 계산 배치4. 이미지 분석 모델/임계값은 유지한다.
+- `login_security.py`: SQLite login_failures/login_challenges, HMAC 클라이언트 키와 CAPTCHA 답, 서버 발급 일회용 이미지(3분), 정책 state.login_policy. settings API는 인증/CSRF/정수 범위 검증을 유지한다.
+- `deploy/alter-nginx.conf`: 11977은127.0.0.1/192.168.0.0/24만, 8080은외부용. 단일127.0.0.1:18080 앱으로 프록시. X-Alter-Exposure는 항상 덮어쓴다. 8080의 전달 IP/HTTPS는 로컬 ngrok 프로세스에서 온 경우만 신뢰한다. 백엔드를 LAN에 직접 바인딩하면 안 된다.
+- `web/static/settings.js`: 보안 설정 조회/저장과 카메라 설정 로딩. `login.js`는 외부 CAPTCHA·만료/실패 재발급·429 대기 안내. 내부 alter_session과 외부 alter_public_session은 DB scope까지 검증한다.
+- 회귀시험: test_resumable.py, test_process_resume.py(실제 별도 프로세스 즉시 종료), test_login_security.py. 운영 진입점은11977을 사용한다. 외부 실제 로그인 테스트에는 사람이 확인한 CAPTCHA 값이 필요하며 자동 해독하지 않는다.
+
+상세 스키마·복구·한계는 docs/indexing-security.md. 기존 JSON 진행률은 더 이상 기록/조회하지 않으며 DB state가 원본이다. 외부 드라이브 파일과 사용자 DB를 Git에 넣지 않는다.

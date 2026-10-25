@@ -96,15 +96,15 @@ class Boundaries(unittest.TestCase):
         self.assertEqual(before,db.rows("SELECT path,text FROM files"))
         self.assertEqual(db.state("generation_at"),"0")
 
-    def test_expired_generation_reextracts_unchanged_file(self):
+    def test_expired_generation_verifies_hash_without_reextracting(self):
         (self.folder/"test.txt").write_text("alpha")
         indexing.scan()
-        with db.connect() as conn:
-            conn.execute("UPDATE files SET text='corrupted'")
         db.set_state("generation_at","0")
-        indexing.scan()
-        self.assertEqual(db.rows("SELECT text FROM files")[0]["text"],"alpha")
-        self.assertNotEqual(db.state("generation_at"),"0")
+        with db.connect() as conn: conn.execute('UPDATE files SET hash_checked=0')
+        with patch.object(indexing.subprocess,'run',side_effect=AssertionError('unchanged content must reuse extraction')):
+            indexing.scan()
+        self.assertEqual(db.rows('SELECT text FROM files')[0]['text'],'alpha')
+        self.assertGreater(db.rows('SELECT hash_checked FROM files')[0]['hash_checked'],0)
 
     def test_unknown_creation_time_is_not_ctime(self):
         (self.folder/"test.txt").write_text("alpha")
@@ -127,7 +127,7 @@ class Boundaries(unittest.TestCase):
 
     def test_password_change_invalidates_session(self):
         token, csrf = auth.login(config.USERNAME,config.PASSWORD,"unit-test")
-        request = SimpleNamespace(cookies={"alter_session":token})
+        request = SimpleNamespace(cookies={"alter_session":token},headers={"x-alter-exposure":"internal"})
         self.assertIsNotNone(auth.session(request))
         with patch.object(config,"PASSWORD","changed-password"):
             self.assertIsNone(auth.session(request))

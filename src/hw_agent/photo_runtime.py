@@ -1,21 +1,18 @@
-"""Atomic progress files stay responsive during the file search DB's FTS refresh."""
+"""Progress is persisted in SQLite; a lightweight heartbeat tracks process health."""
 import json
-import os
 import time
 from .config import DATA
+from . import db
 
 
 def read():
-    try: return json.loads((DATA/'photo-progress.json').read_text())
-    except (FileNotFoundError, ValueError): return {}
+    return json.loads(db.state('photo_progress', '{}'))
 
 
 def write(**values):
     current = read()
     current.update(values, updated=time.time())
-    temporary = DATA/f'photo-progress-{os.getpid()}.tmp'
-    temporary.write_text(json.dumps(current))
-    temporary.replace(DATA/'photo-progress.json')
+    db.set_state('photo_progress',json.dumps(current))
 
 
 def heartbeat():

@@ -29,7 +29,8 @@ with httpx.Client(base_url=args.url, timeout=30) as client:
           client.get("/oauth/callback?state=invalid&code=invalid").status_code == 400)
     response = client.post("/api/login", headers={"Origin": args.url}, json={
         "username": os.environ["DASHBOARD_USERNAME"],
-        "password": os.environ["DASHBOARD_PASSWORD"]})
+        "password": os.environ["DASHBOARD_PASSWORD"],
+        "challenge_id":os.getenv("ALTER_CAPTCHA_ID",""),"captcha":os.getenv("ALTER_CAPTCHA_ANSWER","")})
     check("same-origin HTTPS login", response.status_code == 200)
     cookie = response.headers["set-cookie"].lower()
     check("secure HttpOnly strict cookie",

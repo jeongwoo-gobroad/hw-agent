@@ -7,7 +7,7 @@ from hw_agent.motion import LABELS
 
 
 def main():
-    base = "http://127.0.0.1:8080"
+    base = "http://127.0.0.1:11977"
     results = []
     def check(name, condition):
         assert condition, name

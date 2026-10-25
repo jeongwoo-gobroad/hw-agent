@@ -12,9 +12,9 @@ from hw_agent import auth, config, db, storage
 
 def main():
     token, csrf = auth.login(config.USERNAME, config.PASSWORD, 'photo-verification')
-    client = httpx.Client(base_url='http://127.0.0.1:8080', headers={'Cookie':'alter_session='+token,
+    client = httpx.Client(base_url='http://127.0.0.1:11977', headers={'Cookie':'alter_session='+token,
                             'X-CSRF-Token':csrf}, timeout=240)
-    assert httpx.get('http://127.0.0.1:8080/api/photos/items').status_code == 401
+    assert httpx.get('http://127.0.0.1:11977/api/photos/items').status_code == 401
     assert client.post('/api/photos/scan',headers={'X-CSRF-Token':''}).status_code == 403
     listing = storage.devices()
     device = next(d for d in listing if d['mount'])

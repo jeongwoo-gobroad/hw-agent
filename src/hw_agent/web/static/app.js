@@ -16,7 +16,7 @@ function page(name){
   if(name!=="settings"){$("#camera-orientation-stream").removeAttribute("src");$("#camera-orientation-view").hidden=true;$("#camera-orientation-preview").textContent="방향 미리보기 켜기";}
   if(name!=="camera")$("#stream").removeAttribute("src");
   if(name!=="motion"){$("#motion-stream").removeAttribute("src");$("#motion-preview").hidden=true;$("#motion-preview-toggle").textContent="미리보기 켜기";}
-  const loaders={files:()=>window.loadFileTree(),settings:loadCameraOrientation,photos:()=>window.loadPhotos(),photofolders:()=>window.loadPhotoFolders(),drives:loadDrives,home:loadHome,chat:loadSessions,camera:loadCamera,motion:loadMotion};
+  const loaders={files:()=>window.loadFileTree(),settings:loadSettings,photos:()=>window.loadPhotos(),photofolders:()=>window.loadPhotoFolders(),drives:loadDrives,home:loadHome,chat:loadSessions,camera:loadCamera,motion:loadMotion};
   if(loaders[name])loaders[name]().catch(e=>notify(e.message));
   if(name==="files"&&!lastQuery)searchFiles().catch(e=>notify(e.message));
 }

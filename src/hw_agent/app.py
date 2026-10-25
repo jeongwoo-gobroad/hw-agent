@@ -19,13 +19,14 @@ from .camera import camera
 from .motion import motion
 from . import oauth_gateway, voice
 from . import photos, resources
-from . import file_browser
+from . import file_browser, inventory, login_security
 
 
 @asynccontextmanager
 async def lifespan(app):
     db.init()
     photos.init()
+    login_security.init()
     camera.restore_orientation()
     oauth.initialize()
     indexing.stop_event.clear()
@@ -61,7 +62,7 @@ app.add_api_route("/oauth/callback", oauth_gateway.callback, methods=["GET"])
 @app.middleware("http")
 async def security(request: Request, call_next):
     path = request.url.path
-    public = (path in {"/login", "/api/login", "/health"} or path.startswith("/static/")
+    public = (path in {"/login", "/api/login", "/api/login/challenge", "/health"} or path.startswith("/static/")
               or (path in {"/oauth/start", "/oauth/callback"} and request.method == "GET"))
     current = auth.session(request) if not public else None
     if not public and current is None:
@@ -101,13 +102,15 @@ async def permission_error(request, exc):
 class Login(BaseModel):
     username: str = Field(max_length=100)
     password: str = Field(max_length=200)
+    challenge_id: str = Field(default="",max_length=100)
+    captcha: str = Field(default="",max_length=20)
 
 
 @app.post("/api/login")
 def login(body: Login, request: Request):
-    token, csrf = auth.login(body.username, body.password, request.client.host)
+    token, csrf = auth.login(body.username, body.password, request.client.host, login_security.scope(request),body.challenge_id,body.captcha)
     response = JSONResponse({"csrf": csrf})
-    response.set_cookie("alter_session", token, httponly=True,
+    response.set_cookie(login_security.cookie_name(request), token, httponly=True,
                         secure=config.SECURE_COOKIE or request.url.scheme == "https",
                         samesite="strict", max_age=43200)
     return response
@@ -116,10 +119,33 @@ def login(body: Login, request: Request):
 @app.post("/api/logout")
 def logout(request: Request):
     with db.connect() as conn:
-        conn.execute("DELETE FROM auth WHERE token=?", (hashlib.sha256(request.cookies.get("alter_session", "").encode()).hexdigest(),))
+        conn.execute("DELETE FROM auth WHERE token=?", (hashlib.sha256(request.cookies.get(login_security.cookie_name(request), "").encode()).hexdigest(),))
     response = JSONResponse({"ok": True})
-    response.delete_cookie("alter_session")
+    response.delete_cookie(login_security.cookie_name(request))
     return response
+
+
+@app.get('/api/login/challenge')
+def login_challenge(request: Request):
+    if login_security.scope(request)=='internal': return {'required':False}
+    return login_security.challenge(request.client.host)
+
+
+class LoginPolicy(BaseModel):
+    max_failures: int = Field(ge=1,le=20,strict=True)
+    block_minutes: int = Field(ge=1,le=1440,strict=True)
+    window_minutes: int = Field(ge=1,le=60,strict=True)
+
+
+@app.get('/api/settings/security')
+def security_settings():
+    return login_security.policy()
+
+
+@app.put('/api/settings/security')
+def set_security_settings(body: LoginPolicy):
+    db.set_state('login_policy',json.dumps(body.model_dump()))
+    return login_security.policy()
 
 
 @app.get("/api/me")
@@ -221,6 +247,7 @@ def delete_root(identifier: int):
         conn.execute("DELETE FROM files WHERE root=?", (identifier,))
         conn.execute("DELETE FROM roots WHERE id=?", (identifier,))
         conn.execute("DELETE FROM staging WHERE root=?", (identifier,))
+        inventory.drop(conn,'files',identifier)
     return {"ok": True}
 
 

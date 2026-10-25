@@ -2,6 +2,6 @@
 Type=Application
 Name=Alter touch panel
 Comment=Local personal agent dashboard
-Exec=chromium --app=http://127.0.0.1:8080/panel --start-maximized --user-data-dir=/home/jeongwoo/.config/alter-chromium --no-first-run
+Exec=chromium --app=http://127.0.0.1:11977/panel --start-maximized --user-data-dir=/home/jeongwoo/.config/alter-chromium --no-first-run
 Terminal=false
 X-GNOME-Autostart-enabled=true
