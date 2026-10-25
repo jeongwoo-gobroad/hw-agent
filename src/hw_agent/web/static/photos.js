@@ -8,8 +8,8 @@ function photoProgress(s){const [done,total]=photoCounters(s);const phase=s.stag
 window.photoDashboard=s=>{
   $("#photo-total").textContent=(s.photos.total_media||0).toLocaleString();$("#photo-progress").textContent=photoProgress(s.photos);
   const [done,total]=photoCounters(s.photos);$("#photo-progress-bar").max=Math.max(1,total);if(s.photos.stage==='counting')$("#photo-progress-bar").removeAttribute('value');else $("#photo-progress-bar").value=done;
-  const f=s.index;$('#scan-status').textContent=(f.stage==='counting'?'전체 대상 집계 중 · '+(f.total||0).toLocaleString()+'개 발견':progressCounts(f.files||0,f.total||0))+(f.error?' · '+f.error:'')+(f.errors?' · 확인 필요 '+f.errors+'개':'');
-  $('#file-eta').textContent=f.error?'오류 확인 필요 · ETA 없음':f.stage==='complete'?'확인 완료':f.stage==='finalizing'?'검색 색인 반영 중 · ETA 계산 대기':!f.running?'대기 · ETA 없음':f.stage==='counting'?'ETA 집계 후 계산':etaText(f.eta_seconds);
+  const f=s.index;$('#scan-status').textContent=(f.stage==='counting'?'전체 대상 집계 중 · '+(f.total||0).toLocaleString()+'개 발견':!f.total_known?`${(f.files||0).toLocaleString()}개 확인 · 현재 ${(f.total||0).toLocaleString()}개 발견 · 나머지 폴더 집계 대기`:progressCounts(f.files||0,f.total||0))+(f.error?' · '+f.error:'')+(f.errors?' · 확인 필요 '+f.errors+'개':'');
+  $('#file-eta').textContent=f.error?'오류 확인 필요 · ETA 없음':f.stage==='complete'?'확인 완료':f.stage==='finalizing'?'검색 색인 반영 중 · ETA 계산 대기':!f.running?'대기 · ETA 없음':!f.total_known?'전체 ETA는 모든 폴더 집계 후 계산':etaText(f.eta_seconds);
   $('#file-progress-bar').max=Math.max(1,f.total||0);if(!f.total_known)$('#file-progress-bar').removeAttribute('value');else $('#file-progress-bar').value=f.files||0;
   $("#resource-load").textContent=`${s.resources.cpu_percent??"—"}% · ${s.resources.ram_percent}%`;
   $("#resource-temperature").textContent=`CPU ${s.resources.cpu_temperature==null?"계측 미지원":s.resources.cpu_temperature+"°C"} · RAM ${s.resources.ram_temperature==null?"온도 센서 없음":s.resources.ram_temperature+"°C"}`;
