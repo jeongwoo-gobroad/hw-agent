@@ -9,8 +9,8 @@ import threading
 import time
 import uuid
 from fastapi import HTTPException
-from . import db, storage
-from .progress import count_files, Estimate
+from . import db, storage, inventory
+from .progress import Estimate
 
 scan_lock = threading.Lock()
 status = {"running": False, "files": 0, "error": None}
@@ -28,114 +28,150 @@ def tokens(text):
     return " ".join(pieces)
 
 
-def scan():
-    if not scan_lock.acquire(blocking=False):
-        return
-    status.update(running=True, files=0, error=None, stage="counting", total=0, eta_seconds=None, total_known=False)
+HASH_INTERVAL = 3*86400
+SCAN_INTERVAL = 600
+TEXT_EXTENSIONS = {'.txt','.md','.csv','.json','.py','.log','.yaml','.yml','.xml','.docx','.hwpx','.pdf','.hwp'}
+
+
+def extract_content(path):
+    if path.suffix.lower() not in TEXT_EXTENSIONS: return '', 'unsupported'
+    if path.stat().st_size>32*1024**2: return '', 'size_limit'
     try:
-        previous = float(db.state("generation_at", "0"))
-        rebuild = time.time() - previous >= 3 * 86400 or db.state("extractor_version") != EXTRACTOR_VERSION
-        generation = uuid.uuid4().hex
-        complete = True
-        roots = db.rows("SELECT * FROM roots")
+        result=subprocess.run([sys.executable,'-m','hw_agent.extract',str(path)],
+                              capture_output=True,text=True,timeout=12,check=True)
+        output=json.loads(result.stdout)
+        return output['text'],output['status']
+    except (subprocess.SubprocessError,ValueError):
+        return '', 'timeout_or_error'
+
+
+def scan(force=True):
+    if not scan_lock.acquire(blocking=False): return
+    status.update(running=True, files=0, total=0, error=None, eta_seconds=None,
+                  total_known=False, stage='counting', reused=0, changed=0, resumed=False)
+    inventory.init()
+    try:
+        roots=db.rows('SELECT * FROM roots')
+        current_jobs=[]
         for root in roots:
+            current=inventory.begin('files',root,EXTRACTOR_VERSION,force,SCAN_INTERVAL)
+            status['resumed'] |= current['done']>0 and current['stage']!='complete'
+            current_jobs.append((root,current))
+        def refresh(stage=None,eta=None):
+            jobs=[inventory.job('files',root['id']) for root,_ in current_jobs]
+            jobs=[j for j in jobs if j]
+            status.update(files=sum(j['done'] for j in jobs),total=sum(j['total'] for j in jobs),
+                          reused=sum(j['reused'] for j in jobs),changed=sum(j['changed'] for j in jobs),
+                          errors=sum(j['errors'] for j in jobs),
+                          total_known=all(j['stage']!='discovering' for j in jobs),eta_seconds=eta)
+            if stage: status['stage']=stage
+        for root,current in current_jobs:
             try:
-                offset = status['total']
-                count = count_files(storage.root_path(root), stop_event.is_set,
-                                    on_count=lambda n: status.update(total=offset+n))
-                status['total'] = offset+count
-            except InterruptedError:
-                return
-            except (OSError, HTTPException) as exc:
-                status['error'] = str(getattr(exc, 'detail', type(exc).__name__))
-                complete = False
-        status.update(total_known=True, stage='indexing')
-        estimate = Estimate()
-        for root in roots:
-            try:
-                base = storage.root_path(root)
-            except HTTPException as error:
-                if error.status_code not in {403, 409}:
-                    raise
-                status["error"] = error.detail
-                complete = False
-                continue
-            with db.connect() as conn:
-                conn.execute("DELETE FROM staging WHERE root=?", (root["id"],))
-            for directory, dirs, names in os.walk(base, followlinks=False):
-                dirs[:] = [d for d in dirs if not d.startswith(".") and not storage.excluded(Path(directory)/d) and not (Path(directory)/d).is_symlink()]
-                if not db.rows("SELECT id FROM roots WHERE id=?", (root["id"],)):
-                    break
-                for name in names:
-                    if stop_event.is_set():
-                        return
-                    p = Path(directory) / name
-                    if storage.excluded(p) or p.is_symlink() or name.startswith("."):
-                        continue
-                    st = p.stat()
-                    key = f"{root['id']}\n{p.relative_to(base)}"
-                    prior_rows = db.rows("SELECT * FROM files WHERE path=?", (key,))
-                    prior = prior_rows[0] if prior_rows else None
-                    if prior and not rebuild and prior["modified"] == st.st_mtime and prior["size"] == st.st_size:
-                        text, extraction = prior["text"], prior["extraction"]
-                    else:
+                if current['stage']=='complete': refresh();continue
+                base=storage.root_path(root)
+                current=inventory.discover(current,base,stop_event.is_set,notify=lambda _:refresh('counting'))
+                refresh('indexing')
+                estimate=Estimate()
+                while entries:=inventory.pending(current,64):
+                    base=storage.root_path(root)
+                    for entry in entries:
+                        if stop_event.is_set(): raise InterruptedError()
+                        key=f"{root['id']}\n{entry['relative']}"
                         try:
-                            completed = subprocess.run([sys.executable, "-m", "hw_agent.extract", str(p)],
-                                                       capture_output=True, text=True, timeout=12, check=True)
-                            result = json.loads(completed.stdout)
-                            text, extraction = result["text"], result["status"]
-                        except (subprocess.SubprocessError, ValueError):
-                            text, extraction = "", "timeout_or_error"
-                    record = (root["id"], key, name, p.suffix.lower(), mimetypes.guess_type(name)[0] or "application/octet-stream",
-                              st.st_size, st.st_mtime, getattr(st, "st_birthtime", None), text, extraction, generation)
-                    with db.connect() as conn:
-                        conn.execute("BEGIN IMMEDIATE")
-                        if not conn.execute("SELECT id FROM roots WHERE id=?", (root["id"],)).fetchone():
-                            break
-                        conn.execute("INSERT INTO staging VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                                     (*record, tokens(name), tokens(key), tokens(text)))
-                    status["files"] += 1
-                    status['total'] = max(status['total'], status['files'])
-                    status.update(stage='indexing', eta_seconds=estimate.advance(status['total']-status['files']))
-            if not db.rows("SELECT id FROM roots WHERE id=?", (root["id"],)):
-                continue
-            status.update(stage='finalizing', eta_seconds=None)
-            # 드라이브가 사라지면 기존 색인을 지우지 않는다.
-            storage.root_path(root)
-            with db.connect() as conn:
-                conn.execute("BEGIN IMMEDIATE")
-                if not conn.execute("SELECT id FROM roots WHERE id=?", (root["id"],)).fetchone():
-                    continue
-                conn.execute("""INSERT INTO files(root,path,name,ext,mime,size,modified,created,text,extraction,seen)
-                      SELECT root,path,name,ext,mime,size,modified,created,text,extraction,seen FROM staging WHERE root=?
-                      ON CONFLICT(path) DO UPDATE SET
-                      name=excluded.name,ext=excluded.ext,mime=excluded.mime,size=excluded.size,
-                      modified=excluded.modified,created=excluded.created,text=excluded.text,
-                      extraction=excluded.extraction,seen=excluded.seen""", (root["id"],))
-                conn.execute("DELETE FROM search WHERE rowid IN (SELECT id FROM files WHERE root=?)", (root["id"],))
-                conn.execute("DELETE FROM files WHERE root=? AND seen<>?", (root["id"], generation))
-                conn.execute("""INSERT INTO search(rowid,name,path,body)
-                  SELECT files.id,staging.name_tokens,staging.path_tokens,staging.body_tokens
-                  FROM staging JOIN files ON files.path=staging.path WHERE staging.root=?""", (root["id"],))
-                conn.execute("DELETE FROM staging WHERE root=?", (root["id"],))
-        if rebuild and complete:
-            db.set_state("generation_at", str(time.time()))
-            db.set_state("extractor_version", EXTRACTOR_VERSION)
-        db.set_state("last_scan", str(time.time()))
+                            path=inventory.safe_path(base,entry['relative'])
+                            try: stat=path.stat()
+                            except FileNotFoundError:
+                                with db.connect() as c: inventory.acknowledge(c,current,entry,error=True)
+                                continue
+                            previous=db.rows('SELECT * FROM files WHERE path=?',(key,))
+                            prior=previous[0] if previous else None
+                            # 이전 staging에도 완료한 추출 결과가 있으므로 재사용한다.
+                            if prior is None or not inventory.unchanged(prior,stat):
+                                legacy=db.rows('SELECT * FROM staging WHERE path=? AND size=? AND modified=? ORDER BY rowid DESC LIMIT 1',
+                                               (key,stat.st_size,stat.st_mtime))
+                                if legacy: prior=legacy[0]
+                            same_metadata=inventory.unchanged(prior,stat)
+                            old_hash=prior.get('content_hash') if prior else None
+                            hash_due=not old_hash or not same_metadata or time.time()-(prior.get('hash_checked') or 0)>=HASH_INTERVAL
+                            digest,checked=old_hash,(prior.get('hash_checked') if prior else None)
+                            if hash_due:
+                                digest,stat=inventory.digest(path,stop_event.is_set);checked=time.time()
+                            same_content=bool(prior and ((old_hash and digest==old_hash) or (not old_hash and same_metadata)))
+                            version=(prior.get('extractor_version') or db.state('extractor_version',EXTRACTOR_VERSION)) if prior else None
+                            reuse=same_content and version==EXTRACTOR_VERSION
+                            if reuse: text,extraction=prior['text'],prior['extraction']
+                            else: text,extraction=extract_content(path)
+                            if inventory.fingerprint(path.stat())!=inventory.fingerprint(stat):
+                                raise OSError('File changed during extraction; retry pending item')
+                            with db.connect() as c:
+                                c.execute('BEGIN IMMEDIATE')
+                                if not c.execute('SELECT 1 FROM roots WHERE id=?',(root['id'],)).fetchone():
+                                    inventory.drop(c,'files',root['id']);current=None;break
+                                old=c.execute('SELECT id,content_hash,extractor_version FROM files WHERE path=?',(key,)).fetchone()
+                                needs_fts=not old or not reuse or prior.get('id')!=old['id']
+                                if old and not needs_fts:
+                                    c.execute('UPDATE files SET seen=?,modified=?,modified_ns=?,ctime_ns=?,content_hash=?,hash_checked=?,extractor_version=? WHERE id=?',
+                                              (current['generation'],stat.st_mtime,stat.st_mtime_ns,stat.st_ctime_ns,digest,checked,EXTRACTOR_VERSION,old['id']))
+                                else:
+                                    c.execute("""INSERT INTO files(root,path,name,ext,mime,size,modified,created,text,extraction,seen,
+                                      modified_ns,ctime_ns,content_hash,hash_checked,extractor_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                      ON CONFLICT(path) DO UPDATE SET size=excluded.size,modified=excluded.modified,created=excluded.created,
+                                      text=excluded.text,extraction=excluded.extraction,seen=excluded.seen,modified_ns=excluded.modified_ns,
+                                      ctime_ns=excluded.ctime_ns,content_hash=excluded.content_hash,hash_checked=excluded.hash_checked,
+                                      extractor_version=excluded.extractor_version""",
+                                      (root['id'],key,path.name,path.suffix.lower(),mimetypes.guess_type(path.name)[0] or 'application/octet-stream',
+                                       stat.st_size,stat.st_mtime,getattr(stat,'st_birthtime',None),text,extraction,current['generation'],
+                                       stat.st_mtime_ns,stat.st_ctime_ns,digest,checked,EXTRACTOR_VERSION))
+                                identifier=c.execute('SELECT id FROM files WHERE path=?',(key,)).fetchone()[0]
+                                if needs_fts:
+                                    c.execute('DELETE FROM search WHERE rowid=?',(identifier,))
+                                    c.execute('INSERT INTO search(rowid,name,path,body) VALUES(?,?,?,?)',
+                                              (identifier,tokens(path.name),tokens(key),tokens(text)))
+                                c.execute('DELETE FROM staging WHERE path=?',(key,))
+                                inventory.acknowledge(c,current,entry,reused=reuse)
+                        except InterruptedError: raise
+                        except (OSError,HTTPException):
+                            with db.connect() as c:
+                                c.execute('UPDATE files SET seen=? WHERE path=?',(current['generation'],key))
+                                inventory.acknowledge(c,current,entry,error=True)
+                        current=inventory.job('files',root['id'])
+                        if current is None: break
+                        refresh('indexing',estimate.advance(current['total']-current['done']))
+                    if current is None: break
+                if current is None: continue
+                # 삭제 반영은 해당 루트를 끝까지 확인하고 드라이브가 연결된 경우에만 한다.
+                storage.root_path(root)
+                refresh('finalizing')
+                while True:
+                    stale=db.rows('SELECT id FROM files WHERE root=? AND (seen IS NULL OR seen!=?) LIMIT 256',
+                                  (root['id'],current['generation']))
+                    if not stale: break
+                    with db.connect() as c:
+                        c.executemany('DELETE FROM search WHERE rowid=?',[(r['id'],) for r in stale])
+                        c.executemany('DELETE FROM files WHERE id=?',[(r['id'],) for r in stale])
+                with db.connect() as c: inventory.finish(c,current)
+                refresh()
+            except InterruptedError: raise
+            except Exception as exc:
+                status['error']=str(getattr(exc,'detail',type(exc).__name__))
+        db.set_state('last_scan',str(time.time()))
+        db.set_state('extractor_version',EXTRACTOR_VERSION)
         storage.restore_shares()
+    except InterruptedError:
+        status['stage']='stopped'
     except Exception as exc:
-        status["error"] = str(getattr(exc, "detail", type(exc).__name__))
+        status['error']=str(getattr(exc,'detail',type(exc).__name__))
     finally:
-        status['stage'] = 'stopped' if stop_event.is_set() else 'error' if status['error'] else 'complete'
-        status['eta_seconds'] = 0 if status['stage']=='complete' else None
-        status["running"] = False
+        status['stage']='stopped' if stop_event.is_set() else 'error' if status['error'] else 'complete'
+        status['eta_seconds']=0 if status['stage']=='complete' else None
+        status['running']=False
         scan_lock.release()
 
 
 def worker():
     while not stop_event.is_set():
-        scan()
-        stop_event.wait(60)
+        scan(force=False)
+        stop_event.wait(SCAN_INTERVAL)
 
 
 def search(query="", ext="", root=0, after=None, before=None, date_field="modified", offset=0, rerank=False):

@@ -23,7 +23,7 @@ class OAuthTests(unittest.TestCase):
         self.settings=patch.multiple(oauth,CLIENT_ID="test-client",CLIENT_SECRET="test-secret",REDIRECT_URI="https://callback.example/oauth/callback")
         self.settings.start()
         token,_=auth.login(config.USERNAME,config.PASSWORD,"oauth-test")
-        self.session=auth.session(SimpleNamespace(cookies={"alter_session":token}))
+        self.session=auth.session(SimpleNamespace(cookies={"alter_session":token},headers={"x-alter-exposure":"internal"}))
     def tearDown(self): self.settings.stop()
     def start(self):
         url=oauth.begin(self.session)

@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
-BASE = os.getenv("ALTER_TEST_URL", "http://127.0.0.1:8080")
+BASE = os.getenv("ALTER_TEST_URL", "http://127.0.0.1:11977")
 client = httpx.Client(base_url=BASE, timeout=240)
 results = []
 

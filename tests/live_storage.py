@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 base = Path(__file__).resolve().parents[1]
 load_dotenv(base/".env")
-c = httpx.Client(base_url="http://127.0.0.1:8080",timeout=45)
+c = httpx.Client(base_url="http://127.0.0.1:11977",timeout=45)
 for _ in range(30):
     try:
         if c.get("/health").is_success: break

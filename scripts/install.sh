@@ -23,5 +23,6 @@ sudo install -m 644 deploy/alter.service /etc/systemd/system/alter.service
 sudo install -m 644 deploy/alter-oauth.service /etc/systemd/system/alter-oauth.service
 sudo install -m 644 deploy/alter-photos.service /etc/systemd/system/alter-photos.service
 sudo systemctl daemon-reload
+bash scripts/install-web-entrypoints.sh
 sudo systemctl enable --now alter alter-oauth alter-photos
 echo "Configure Samba using docs/operations.md before enabling shares."

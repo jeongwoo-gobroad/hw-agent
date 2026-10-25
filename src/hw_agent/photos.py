@@ -8,8 +8,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from . import db, storage, config, preview
-from .photo_models import TOPICS
-from . import photo_runtime
+from .photo_models import TOPICS, MODEL_VERSION
+from . import photo_runtime, inventory
 
 router = APIRouter(prefix="/api/photos")
 CACHE = config.DATA / "photos"
@@ -32,6 +32,17 @@ def init():
         CREATE TABLE IF NOT EXISTS photo_faces(id INTEGER PRIMARY KEY, photo INTEGER, person INTEGER, box TEXT);
         CREATE INDEX IF NOT EXISTS photo_face_person ON photo_faces(person,photo);
         ''')
+
+        columns={r[1] for r in conn.execute('PRAGMA table_info(photos)')}
+        for name,datatype in {'modified_ns':'INTEGER','ctime_ns':'INTEGER','content_hash':'TEXT','hash_checked':'REAL',
+                              'analysis_version':'TEXT','retry_after':'REAL DEFAULT 0','attempts':'INTEGER DEFAULT 0'}.items():
+            if name not in columns: conn.execute(f'ALTER TABLE photos ADD COLUMN {name} {datatype}')
+        conn.execute('CREATE INDEX IF NOT EXISTS photo_face_photo ON photo_faces(photo)')
+        conn.execute('CREATE INDEX IF NOT EXISTS photos_root_seen ON photos(root,seen)')
+        legacy=conn.execute("SELECT value FROM state WHERE key='photo_model_version'").fetchone()
+        if legacy and 'analysis_version' not in columns:
+            conn.execute("UPDATE photos SET analysis_version=? WHERE analysis_version IS NULL AND scores!='{}'",(legacy[0],))
+    inventory.init()
 
 
 def root_path(root):
@@ -117,6 +128,7 @@ def remove_root(identifier: int):
         conn.execute('DELETE FROM photo_faces WHERE photo IN (SELECT id FROM photos WHERE root=?)', (identifier,))
         conn.execute('DELETE FROM photos WHERE root=?', (identifier,))
         conn.execute('DELETE FROM photo_roots WHERE id=?', (identifier,))
+        inventory.drop(conn,'photos',identifier)
         conn.execute('DELETE FROM photo_people WHERE id NOT IN (SELECT person FROM photo_faces)')
     for i in ids:
         (CACHE / f'{i}.jpg').unlink(missing_ok=True)
@@ -143,7 +155,7 @@ def status():
     result = photo_runtime.read() or json.loads(db.state('photo_progress', '{}'))
     result['paused'] = db.state('photo_paused', '0') == '1'
     result['total_media'] = db.rows('SELECT count(*) n FROM photos p WHERE NOT EXISTS(SELECT 1 FROM photos l WHERE l.root=p.root AND l.live_relative=p.relative)')[0]['n']
-    result['classified_media'] = db.rows("SELECT count(*) n FROM photos p WHERE scores!='{}' AND NOT EXISTS(SELECT 1 FROM photos l WHERE l.root=p.root AND l.live_relative=p.relative)")[0]['n']
+    result['classified_media'] = db.rows("SELECT count(*) n FROM photos p WHERE scores!='{}' AND analysis_version=? AND NOT EXISTS(SELECT 1 FROM photos l WHERE l.root=p.root AND l.live_relative=p.relative)",(MODEL_VERSION,))[0]['n']
     result['topics'] = {key: value[0] for key, value in TOPICS.items()}
     result['worker_online'] = photo_runtime.online()
     return result

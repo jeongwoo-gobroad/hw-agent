@@ -63,7 +63,14 @@ def init():
             db.executemany("INSERT INTO roots_v2 VALUES(?,?,?,?,?,?)", migrated)
             db.execute("DROP TABLE roots")
             db.execute("ALTER TABLE roots_v2 RENAME TO roots")
-        db.execute("PRAGMA user_version=2")
+        db.execute("PRAGMA user_version=3")
+        columns = {r[1] for r in db.execute('PRAGMA table_info(files)')}
+        for name, datatype in {'modified_ns':'INTEGER','ctime_ns':'INTEGER','content_hash':'TEXT',
+                               'hash_checked':'REAL','extractor_version':'TEXT'}.items():
+            if name not in columns: db.execute(f'ALTER TABLE files ADD COLUMN {name} {datatype}')
+        db.execute('CREATE INDEX IF NOT EXISTS files_root_seen ON files(root,seen)')
+        db.execute('CREATE INDEX IF NOT EXISTS files_hash_version ON files(content_hash,extractor_version)')
+        db.execute('CREATE INDEX IF NOT EXISTS staging_path ON staging(path)')
         db.execute("UPDATE runs SET status='interrupted' WHERE status='running'")
 
 

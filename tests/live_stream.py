@@ -14,7 +14,8 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 with httpx.Client(base_url=args.url, timeout=240) as client:
     response = client.post("/api/login", json={
         "username": os.environ["DASHBOARD_USERNAME"],
-        "password": os.environ["DASHBOARD_PASSWORD"]})
+        "password": os.environ["DASHBOARD_PASSWORD"],
+        "challenge_id":os.getenv("ALTER_CAPTCHA_ID",""),"captcha":os.getenv("ALTER_CAPTCHA_ANSWER","")})
     response.raise_for_status()
     client.headers["X-CSRF-Token"] = response.json()["csrf"]
     response = client.post("/api/sessions", json={"title": "스트리밍 검증"})
