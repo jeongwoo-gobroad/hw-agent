@@ -11,7 +11,7 @@ os.environ['DATA_DIR'] = sandbox.name+'/state'
 os.environ.setdefault('DASHBOARD_USERNAME', 'test')
 os.environ.setdefault('DASHBOARD_PASSWORD', 'test')
 os.environ.setdefault('SESSION_SECRET', 'x'*48)
-os.environ['EXCLUDED_DIRECTORY_NAMES'] = 'externalNodes'
+os.environ['EXCLUDED_DIRECTORY_NAMES'] = 'excluded_fixture'
 from fastapi import HTTPException
 from PIL import Image
 from hw_agent import db, photos, storage
@@ -79,11 +79,11 @@ class PhotoTests(unittest.TestCase):
         with self.assertRaises(HTTPException): photos.safe_media(i)
 
     def test_exclusion_before_walk(self):
-        protected=self.folder/'externalNodes';protected.mkdir()
+        protected=self.folder/'excluded_fixture';protected.mkdir()
         Image.new('RGB',(20,20)).save(protected/'never.jpg')
         original=os.scandir
         def guarded(path):
-            self.assertNotIn('externalNodes',str(path));return original(path)
+            self.assertNotIn('excluded_fixture',str(path));return original(path)
         with patch('os.scandir',side_effect=guarded):discover(self.root)
         self.assertEqual(db.rows('SELECT * FROM photos'),[])
 

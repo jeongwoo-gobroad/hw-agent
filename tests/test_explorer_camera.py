@@ -11,7 +11,7 @@ os.environ['DATA_DIR']=sandbox.name+'/data'
 os.environ.setdefault('DASHBOARD_USERNAME','test')
 os.environ.setdefault('DASHBOARD_PASSWORD','test')
 os.environ.setdefault('SESSION_SECRET','x'*48)
-os.environ['EXCLUDED_DIRECTORY_NAMES']='externalNodes'
+os.environ['EXCLUDED_DIRECTORY_NAMES']='excluded_fixture'
 from fastapi import HTTPException
 from hw_agent import db,storage,preview,file_browser,photos,photo_search
 from hw_agent.camera import Camera
@@ -36,8 +36,8 @@ class Features(unittest.TestCase):
 
     def test_protected_path_rejected_before_resolution(self):
         with patch.object(Path,'resolve',side_effect=AssertionError('must not resolve')):
-            with self.assertRaises(HTTPException):file_browser.resolve(self.root['id'],'externalNodes/secret.txt')
-        (self.folder/'externalNodes').mkdir()
+            with self.assertRaises(HTTPException):file_browser.resolve(self.root['id'],'excluded_fixture/secret.txt')
+        (self.folder/'excluded_fixture').mkdir()
         self.assertEqual(file_browser.entries(self.root['id'])['total'],0)
         with self.assertRaises(HTTPException):file_browser.resolve(self.root['id'],'../escape')
 
