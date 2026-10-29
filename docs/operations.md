@@ -118,3 +118,5 @@ NTFS 압축과 쓰기 진단: SMB read only, 마운트 rw/ro, 소유권, 기존 
 공인 IP/DDNS로 접속할 때는 해당 호스트(스킴·포트 제외)를 .env의 ALLOWED_HOSTS에 추가하고 alter를 재시작합니다. 공유기 NAT 설정과 실제 외부망 접속은 별도 검증 대상입니다. 일반 HTTP는 비밀번호·세션을 암호화하지 않습니다. ngrok HTTPS는 기존 OAuth 콜백과 함께 유지되며 외부 CAPTCHA 보호를 사용합니다.
 
 정책, DB 백업/마이그레이션, 최초 해시 생성, 중단 재개와 오류 재시도는 [indexing-security.md](indexing-security.md)를 참조하세요. start.sh는 nginx도 복구하고 내부11977/panel을 엽니다.
+
+NTFS 마운트: 설치 스크립트는 `ntfs-3g`를 설치하며 `alter-disk`는 NTFS를 해당 드라이버와 `nocompression`으로 마운트합니다. 이는 기존 압축 파일을 풀지 않으며 새 파일 압축을 방지합니다. 유지보수 마커 `/var/lib/alter-ntfs-maintenance/active`가 있으면 helper는 마운트를 거부합니다. iSCSI 연결이 남아 있는 동안 이 마커를 제거하지 마세요. 데스크톱 자동 마운트는 별도 UDisks 설정이므로 운영 장비의 UUID별 드라이버 설정도 확인합니다.

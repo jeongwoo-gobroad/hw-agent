@@ -147,3 +147,5 @@ repeat_seconds는 실행 시작 간격이 아니라 Flow 완료 후 최소 대�
 - 회귀시험: test_resumable.py, test_process_resume.py(실제 별도 프로세스 즉시 종료), test_login_security.py. 운영 진입점은11977을 사용한다. 외부 실제 로그인 테스트에는 사람이 확인한 CAPTCHA 값이 필요하며 자동 해독하지 않는다.
 
 상세 스키마·복구·한계는 docs/indexing-security.md. 기존 JSON 진행률은 더 이상 기록/조회하지 않으며 DB state가 원본이다. 외부 드라이브 파일과 사용자 DB를 Git에 넣지 않는다.
+
+NTFS 읽기 유지보수: `deploy/alter-disk`는 NTFS-3G와 `nocompression`을 명시합니다. 운영 장비에서 관측한 NTFS3 압축 읽기 교착을 회피하기 위한 선택이며 기존 압축 해제와는 별개입니다. root 소유 유지보수 마커가 있으면 장치 조회/마운트 전에 거부합니다. `tests/test_disk_maintenance.py`는 이 경계를 검사합니다.
