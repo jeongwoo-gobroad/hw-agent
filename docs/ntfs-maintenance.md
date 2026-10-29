@@ -1,5 +1,9 @@
 # NTFS 압축과 SMB 읽기 점검
 
+## 현재 작업 범위
+
+2026-10-30 사용자 정정: USB는 Pi에 연결한 상태로 유지한다. `externalNodes`도 **압축 해제에는 포함**하지만 내부 파일 내용의 열람·분석·미리보기·추출·해시 검사는 하지 않는다. 이 예외는 운영체제의 압축 해제 및 필요한 파일 속성/진행 상태 확인에만 적용한다. 기존 검색·사진 색인의 제외 설정은 유지한다. 실제 압축 변환에 필요한 디스크 읽기는 파일시스템 드라이버가 수행하며 파일 내용을 진단 출력이나 모델 입력으로 보내지 않는다.
+
 ## 2026-10-30 확인 결과
 
 - 운영 NTFS 드라이브는 `ntfs3`로 읽기/쓰기 마운트되어 있었다. 공유 대상 폴더와 해당 볼륨 루트에 NTFS 압축 속성이 설정되어 있었다.
@@ -10,16 +14,50 @@
 - 대상 볼륨의 남은 공간은 약239.5GiB였다. 제외 경로를 뺀 전체 압축 해제 소요 공간은 아직 집계하지 않았다.
 - 기존 사용자 파일·폴더의 압축 속성, 마운트 설정, 서비스 설정은 변경하지 않았다. **압축 해제 완료 상태가 아니다.**
 
-## 안전한 후속 작업
+## 연결을 유지하는 방법 조사
 
-현재 NTFS3 인터페이스는 일반적인 비어 있지 않은 NTFS 압축 파일을 속성 변경만으로 해제하지 못한다. 원본을 새 파일로 복사해 교체하는 우회는 파일 식별자·NTFS 보안 정보·대체 데이터 스트림·하드링크를 바꿀 수 있으므로 자동으로 적용하지 않는다. Windows에 직접 연결한 뒤 운영체제의 NTFS 압축 해제 기능을 사용하는 절차를 우선한다.
+**USB를 Windows PC에 물리적으로 옮겨야 한다는 이전 판단을 정정한다.** Pi에서 디스크를 iSCSI로 제공하고 Windows가 그 디스크를 단독으로 마운트하면, 케이블을 옮기지 않고 Windows의 NTFS 압축 해제 기능을 사용할 수 있는 구성이 된다. 아래 판단은 공식 문서·소스와 설치 환경 점검에 근거하며, 실제 iSCSI 연결 및 운영 파일 압축 해제 성공을 뜻하지 않는다.
 
-1. 사용자에게 물리적 USB 연결 가능 시점을 확인한다. Pi의 해당 볼륨을 사용하는 작업과 SMB 연결을 정리한 뒤 정상 마운트 해제 성공을 확인한다. 강제·지연 마운트 해제를 사용하지 않는다.
-2. Windows에서 드라이브 문자만 믿지 말고 파일시스템·볼륨 일련번호·용량으로 같은 장치인지 확인한다.
-3. 접근 제외 이름은 디렉터리 항목의 이름만 보고, `stat`·열기·하강보다 먼저 차단한다. `externalNodes` 및 그 하위에는 접근하지 않는다. 이번 유지보수에서는 같은 이름으로 시작하는 보관 파일도 제외한다. 재분석 지점·심볼릭 링크·접합점은 따라가지 않고, 링크 수가 여러 개인 파일도 별도 확인 전에는 변경하지 않는다.
-4. 허용된 파일만 집계하여 압축 상태·논리 크기·할당 크기·해제 여유 공간을 확인한다. 휴지통과 시스템 볼륨 관리 폴더는 제외한다. 볼륨 전체를 대상으로 하는 `compact /s`나 탐색기의 전체 하위 항목 적용을 실행하지 않는다.
-5. 명시적으로 선별한 개별 파일/폴더에만 Windows 기본 압축 해제 기능을 적용한다. 폴더의 압축 속성 해제는 새 파일의 기본값만 바꾸므로 기존 파일 해제와 구분한다. 실패 항목과 작업 진행을 기록하고 남은 공간을 확인한다.
-6. 처리 후 압축 상태와 대표 파일의 내용·메타데이터를 확인한다. Pi 재연결 시 UUID 기반 공유/색인 복원과 Windows SMB 읽기·쓰기, 커널 오류 재발 여부를 검증한다. 금지 경로와 처리하지 않은 항목은 완료 집계에 포함하지 않는다.
+| 방법 | 확인 결과 | 현재 선택 |
+|---|---|---|
+| 기존 Samba 공유에서 `compact /u` | 설치 버전 4.22.11의 기본 VFS `vfswrap_set_compression`은 `NT_STATUS_INVALID_DEVICE_REQUEST`를 반환한다. 현재 공유는 압축 전환 전용 VFS를 사용하지 않는다. Btrfs용 VFS는 NTFS 해법이 아니다. | 현재 구성으로는 사용하지 않음 |
+| NTFS3 속성 해제 | 실제 시험 파일에서 `EOPNOTSUPP` 확인. 비어 있지 않은 일반 NTFS 압축 파일의 제자리 변환을 지원하지 않음. | 사용하지 않음 |
+| NTFS-3G `nocompression` 또는 파일 `setfattr` | 기존 파일 압축은 유지된다. 합성 이미지에서 실제 확인. | 새 파일의 압축 방지와 읽기 드라이버 교체 후보일 뿐 전체 해제 방법은 아님 |
+| NTFS-3G에서 비압축 복사본 생성 후 교체 | 합성 시험에서 비압축 복사 성공. 파일 식별자가 달라짐. 스트림·ACL·생성 시간·하드링크·충돌·복구를 별도로 보존해야 함. | 원본을 자동 교체하지 않음 |
+| Pi iSCSI + Windows NTFS | `tgt`가 로컬 블록 장치를 제공하고 Windows 기본 iSCSI Initiator가 연결하는 구성. 파일별 변환은 Windows `FSCTL_SET_COMPRESSION` 또는 `compact /u` 사용. | 우선 검증할 방식 |
+| USB/IP + Windows 수신 드라이버 | 검토한 `usbip-win`은 테스트 서명/재부팅 안내와 생산 환경 미준비 경고가 있다. `usbipd-win`은 Windows USB를 다른 장치로 내보내는 방향이므로 대체 수신 드라이버가 아니다. | iSCSI보다 우선하지 않음 |
+| 상용 Paragon UFSD | 2011년 공식 8.5 설명서에는 `fsutil compress clearflag`가 있다. 현재 Pi ARM64/6.18 커널용 배포물·라이선스·실제 동작은 확인하지 못함. | 즉시 사용할 수 있다고 주장하지 않음 |
+| 새 커널의 `ntfs` 드라이버 | 최신 문서에서도 `chattr`로 압축 속성을 바꾸는 기능은 지원하지 않는다. 커널 교체 자체는 압축 해제 방법이 아니다. | 이 작업만을 위해 커널을 바꾸지 않음 |
+
+### Pi의 독립 합성 시험
+
+운영 외장 드라이브를 사용하지 않고 SD카드의 `data/` 아래 새 96MiB 이미지 파일을 만들었다. `mkntfs`의 대상은 이 새 일반 파일뿐이었다. NTFS-3G 2022.10.3으로 마운트해 합성 자료만 처리했다.
+
+- 합성 파일: 논리 크기 2,293,760바이트, 압축 할당 크기 286,720바이트.
+- 압축 비트를 지우는 `setxattr`는 성공을 반환했지만 다시 조회하면 압축 비트가 그대로였다. 이는 해당 버전 `security.c`가 일반 파일의 압축 비트를 변경 가능한 비트에 포함하지 않는 구현과 일치한다.
+- 정상 마운트 해제 후 `nocompression`으로 다시 마운트해도 기존 파일의 압축 비트가 유지되었다.
+- 비압축 복사본은 압축 비트가 꺼졌고 합성 원문과 내용이 일치했다. 원본/복사본 inode는 각각65/66이었다.
+- 시험 이미지는 정상 마운트 해제했다. 운영 드라이브·공유·색인 서비스에는 변경을 적용하지 않았다.
+
+### iSCSI 전제 조건의 실제 확인
+
+- Pi 커널에서 `CONFIG_TARGET_CORE`가 비활성화되어 있어 일반 `targetcli`/LIO 구성은 그대로 사용할 수 없다.
+- 대안인 `tgt`는 사용자 공간 iSCSI 구현이다. Pi의 ARM64 APT 목록에 설치 후보가 있으며 아직 설치하지 않았다. 서비스 시작 시 전체 주소에 기본 노출하지 않는다. LAN 주소 한정 구성 또는 loopback 바인딩과 SSH 포워딩 구성이 가능하며, 후자의 Windows 연결은 별도 시험이 필요하다.
+- PC에 `MSiSCSI`, `Connect-IscsiTarget`, `Get-IscsiSession`, `Get-Disk`가 있다. 서비스는 중지 상태이고 현재 실행 프로세스는 관리자 권한이 아니다. 관리자 세션에서 연결 준비가 필요하다.
+- iSCSI 연결·Windows 변환·복귀까지의 전체 시험은 아직 하지 않았다. 먼저 사용자 자료가 없는 시험 이미지를 연결해 검증한다.
+
+## iSCSI를 이용한 후속 절차
+
+1. 합성 이미지로 Pi `tgt` → PC iSCSI → Windows 압축 해제 → 정상 연결 해제 시험을 완료한다. 대상 IQN·고유 디스크 식별자·크기를 검사하고, 시험 디스크 외에는 온라인 전환이나 드라이브 문자 할당을 하지 않는다.
+2. 실제 대상의 UUID와 부모 디스크를 확인한다. 해당 드라이브를 사용하는 SMB·색인·파일 작업을 중지하고 Pi의 정상 마운트 해제 성공을 확인한다. 강제·지연 해제는 사용하지 않는다. 자동 마운트와 부팅 복구가 다시 디스크를 잡지 않도록 유지보수 상태를 적용한다.
+3. 디스크 전체를 내보내는 경우 그 디스크의 모든 파티션이 Pi에서 해제되어 있어야 한다. Windows와 Pi가 같은 NTFS 볼륨을 동시에 마운트하면 안 된다. 다른 외장 디스크와 SD카드는 내보내지 않는다.
+4. PC 한 대만 접근하도록 접속 제한·CHAP 인증을 적용한다. 인터넷 포트포워딩과 ngrok은 사용하지 않는다. CHAP은 인증 수단이며 전송 암호화는 아니다. 기밀 자료 전송에는 SSH 로컬 포워딩 등 암호화 경로를 우선 시험한다. SSH를 사용하면 Pi의 `tgtd`와 PC 포워딩 소켓 모두 loopback에 바인딩하고, iSCSI 포털 주소·포트 및 재연결이 터널을 유지하는지 합성 디스크로 먼저 확인한다.
+5. Windows에서 기존 NTFS 파티션과 볼륨 일련번호·용량을 확인한다. **초기화·포맷·파티션 재생성은 하지 않는다.** 드라이브 문자만으로 장치를 판단하지 않는다.
+6. 내용 읽기 없이 파일 속성·논리 크기·할당 크기로 공간을 확인하고 상태를 저장한다. `externalNodes`도 압축 해제 대상에 포함하지만 경로와 내용은 공개 로그에 기록하지 않는다. 재분석 지점은 따라가지 않는다. 하드링크는 파일 ID로 중복을 구분하고 이름별로 원본을 교체하지 않는다.
+7. Windows의 파일별 압축 해제 기능으로 처리한다. 압축 해제에는 OS 내부의 데이터 읽기/쓰기가 필요하지만 분석용 `ReadFile`·미리보기·검색·해시 검사는 실행하지 않는다. 결과 확인은 압축 상태, 오류 코드, 처리 수와 남은 공간을 사용한다. 폴더 기본 속성과 기존 파일 압축을 별도로 처리한다.
+8. Windows 파일시스템을 정상 해제하고 iSCSI 연결/대상을 제거한 뒤에만 Pi에서 다시 마운트한다. UUID 기반 공유·색인 복원과 합성 시험 파일의 SMB 읽기/쓰기를 확인한다. 기존 색인 DB 및 `externalNodes` 제외 설정은 유지한다.
+
+읽기 멈춤 완화만 필요하다면 `ntfs3`에서 `ntfs-3g`로 정상 재마운트하는 별도 방안도 있다. 압축 읽기 구현이 달라지는 것이므로 현장 검증이 필요하며, 이를 전체 압축 해제로 보고하지 않는다. 압축 읽기의 잠금 순서 문제를 고치는 [공식 커널 커밋](https://github.com/torvalds/linux/commit/e37a75bb866c29da954b51d0dd7670406246d9ee)도 확인했지만 현재 Pi 현상의 정확한 원인/해결 버전과 동일하다고 확정하지 않는다.
 
 ## 근거
 
@@ -27,3 +65,13 @@
 - [Raspberry Pi NTFS3 구현](https://github.com/raspberrypi/linux/blob/rpi-6.18.y/fs/ntfs3/frecord.c): `ni_new_attr_flags`에서 비어 있지 않은 nonresident 데이터의 전환을 거부한다. 브랜치 내용은 변경될 수 있으며 운영 장비 시험 결과와 구분한다.
 - [Microsoft compact](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/compact): 폴더 기본 압축 속성과 기존 파일 상태, 재귀 옵션의 범위.
 - [Microsoft FSCTL_SET_COMPRESSION](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-fsctl_set_compression): 운영체제의 파일별 압축 상태 변경 기능. SMB 프로토콜 지원이 개별 Samba 서버의 구현 지원을 보장하지는 않는다.
+- [Samba 4.22.11 기본 VFS](https://github.com/samba-team/samba/blob/samba-4.22.11/source3/modules/vfs_default.c): `vfswrap_set_compression` 구현.
+- [NTFS-3G 2022.10.3 속성 처리](https://github.com/tuxera/ntfs-3g/blob/2022.10.3/libntfs-3g/security.c): `FILE_ATTR_SETTABLE`, `ntfs_set_ntfs_attrib`.
+- [NTFS-3G 압축 설명](https://github.com/tuxera/ntfs-3g/wiki/Using-Transparently-Compressed-Files), [Debian NTFS-3G 매뉴얼](https://manpages.debian.org/trixie/ntfs-3g/ntfs-3g.8.en.html): 새 파일과 기존 파일의 압축 동작 구분.
+- [TGT 공식 저장소](https://github.com/fujita/tgt), [tgtd](https://manpages.debian.org/trixie/tgt/tgtd.8.en.html), [targets.conf](https://manpages.debian.org/trixie/tgt/targets.conf.5.en.html): 사용자 공간 구현, LAN 바인딩, 로컬 블록 장치, 접속 제한과 인증.
+- [Microsoft Connect-IscsiTarget](https://learn.microsoft.com/en-us/powershell/module/iscsi/connect-iscsitarget): Windows 연결 인터페이스.
+- [OpenSSH 매뉴얼](https://man.openbsd.org/ssh): `-L` TCP 포워딩과 명시적인 loopback 바인딩. iSCSI와의 전체 조합은 현장 검증 전이다.
+- [Hitachi 동시 접근 설명](https://docs.hitachivantara.com/r/en-us/mk-92hnas006-33/block-level-access-through-iscsi/configuring-iscsi-logical-units/concurrent-access-to-logical-units): 일반 NTFS 볼륨에 대한 독립적인 동시 마운트의 충돌.
+- [usbip-win](https://github.com/cezanne/usbip-win), [usbipd-win](https://github.com/dorssel/usbipd-win): 수신/송신 방향과 설치 제약.
+- [Paragon 8.5 설명서](https://download.paragon-software.com/doc/Paragon_NTFS-HFS_for_Linux_8.5_User_Manual.pdf): 2011년 설명서의 인쇄 쪽50/PDF 쪽55. 오래된 명령 설명을 현재 Pi 지원 근거로 사용하지 않는다.
+- [최신 Linux NTFS 드라이버 문서](https://www.kernel.org/doc/html/next/filesystems/ntfs.html): 압축 속성의 `chattr` 변경 미지원.
