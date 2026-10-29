@@ -9,6 +9,8 @@ import sys
 
 try:
     data = json.loads(sys.stdin.read(4096))
+    if data.get("action") == "mount" and Path("/var/lib/alter-ntfs-maintenance/active").exists():
+        raise ValueError("Storage maintenance is active; mounting is temporarily disabled")
     tree = json.loads(subprocess.check_output(
         ["/usr/bin/lsblk", "-J", "-o", "NAME,PATH,TRAN,FSTYPE,UUID,MOUNTPOINTS"], text=True))
     def candidates(items, tran=None):
@@ -42,7 +44,12 @@ try:
             options += ",uid=1000,gid=1000"
         if device["fstype"] == "vfat":
             options += ",utf8=1"
-        args = ["/usr/bin/mount", "-o", options, "--", device["path"], str(target)]
+        args = ["/usr/bin/mount"]
+        if device["fstype"] == "ntfs":
+            # 이 장비에서 확인된 NTFS3 압축 읽기 교착을 피한다.
+            args += ["-t", "ntfs-3g"]
+            options += ",nocompression"
+        args += ["-o", options, "--", device["path"], str(target)]
     else:
         args = ["/usr/bin/umount", "--", device["path"]]
     result = subprocess.run(args, capture_output=True, text=True, timeout=30)
