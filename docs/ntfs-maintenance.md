@@ -4,15 +4,15 @@
 
 USB를 Pi에 연결한 상태에서 Windows 기본 NTFS 기능으로 압축 해제를 수행하는 절차를 검증한다. 파일 내용은 진단 출력이나 모델 입력으로 보내지 않는다. 압축 변환 자체의 데이터 처리는 운영체제가 담당한다.
 
-## 2026-10-30 확인 결과
+## 2026-10-30 초기 진단
 
 - 운영 NTFS 드라이브는 `ntfs3`로 읽기/쓰기 마운트되어 있었다. 공유 대상 폴더와 해당 볼륨 루트에 NTFS 압축 속성이 설정되어 있었다.
 - 커널 `6.18.50+rpt-rpi-2712`, 페이지 크기 16KiB 환경에서 10월 27일 SMB 작업이 `ntfs_read_folio`의 mutex와 `ni_read_folio_cmpr`의 페이지 대기에서 120초 이상 멈춘 기록을 확인했다. 압축 읽기 경로가 관련되어 있다는 증거이며 파일 손상이나 정확한 커널 결함까지 확정한 것은 아니다.
 - 공유 최상위의 새 시험 파일 139,264바이트를 Pi에서 생성하고 읽어 내용 일치를 확인했다. 비어 있지 않은 시험 파일의 `system.ntfs_attrib_be` 압축 비트 해제는 `EOPNOTSUPP`(95)로 거부되었다. 실패 전후 내용이 같았고 시험 파일을 삭제했다.
 - 기존 압축 JPEG 3개(1,602,752 / 1,383,556 / 826,734바이트)는 Pi 직접 읽기와 Windows SMB 읽기의 SHA-256이 각각 일치했다. 이는 표본 검사이며 간헐적 멈춤의 해결이나 전체 데이터 무결성을 뜻하지 않는다.
 - Windows SMB 경유 시험 파일 생성·압축 해제·삭제 검증은 실행 승인 검토에서 차단되어 실행하지 못했다. SMB 압축 해제 지원 여부는 실제 검증되지 않았다.
-- 대상 볼륨의 남은 공간은 약239.5GiB였다. 전체 압축 해제 소요 공간은 아직 집계하지 않았다.
-- 기존 사용자 파일·폴더의 압축 속성, 마운트 설정, 서비스 설정은 변경하지 않았다. **압축 해제 완료 상태가 아니다.**
+- 초기 진단 시점의 남은 공간은 약239.5GiB였다. 이후 메타데이터 조사로 압축 해제에 필요한 할당 증가분을 집계했다.
+- 초기 진단에서는 기존 사용자 파일·폴더의 압축 속성, 마운트 설정, 서비스 설정을 변경하지 않았다. 이후 운영 변환을 시작했으며, 아래 진행 상태와 구분한다.
 
 ## 2026-10-30 iSCSI 현장 검증
 
@@ -21,6 +21,14 @@ USB를 Pi에 연결한 상태에서 Windows 기본 NTFS 기능으로 압축 해�
 - Windows 작업 관리자의 디스크 감시가 장치 제거를 거부하는 것을 이벤트 225로 확인했다. 해당 창을 닫은 뒤 정상 분리되었다. 파일시스템을 두 OS에서 동시에 마운트하는 방식은 사용하지 않는다.
 - 운영 변환용 작업은 내용을 읽는 대신 파일 속성, 파일 ID, 논리/할당 크기와 스트림 메타데이터를 조사한다. SQLite에 진행 상태를 저장하고 여유 공간을 확인한 후 `FSCTL_SET_COMPRESSION`을 호출한다. 재분석 지점은 따라가지 않는다. 개별 경로와 작업 DB는 로컬 비공개 상태로 보관한다.
 - 운영 볼륨 준비 중 기존 SMB 스레드들이 `ntfs_read_folio`와 `folio_wait_bit_common`에서 종료되지 않는 것을 확인했다. 서버·색인을 중지하고, 재부팅 중 자동 마운트/서비스 재시작을 막는 유지보수 조건을 적용했다. Pi 재시작 후 대상 볼륨이 Linux에 마운트되지 않은 것을 확인하고 Windows 단독 연결에서 메타데이터 조사를 시작했다. 운영 압축 해제 완료로 기록하지 않는다.
+
+### 운영 변환 진행 상태
+
+메타데이터 조사와 여유 공간 검사를 마치고 Windows 기본 NTFS 압축 해제를 실행 중이다. 폴더 기본 압축 속성과 기존 데이터 스트림을 따로 처리한다. **전체 변환, Pi 공유 복구, 복구 후 SMB 읽기·쓰기 검증은 아직 완료되지 않았다.**
+
+변환은 파일 ID와 스트림별 SQLite 기록을 기준으로 재개한다. 재개 시 이미 압축이 해제된 항목은 상태 조회만 하고 다시 변환하지 않는다. 제자리 변환의 공간 검사는 파일 전체 크기가 아닌 현재 할당 크기 대비 증가분과 별도 예비 공간을 사용한다. 큰 파일의 Windows 호출 하나가 오래 걸릴 수 있으므로 진행 기록의 갱신 지연만으로 중단된 작업이라고 판단하지 않는다.
+
+한 번 승인받은 관리자 셸에서 필요한 작업을 순서대로 실행한다. 대기열과 작업 상태는 로컬의 제한된 디렉터리에 두며 저장소에는 포함하지 않는다. 후속 처리는 Windows 연결 해제가 확인되고 Pi 대상에도 연결이 없을 때만 Linux 소유권을 복구한다. 분리가 확인되지 않으면 마운트 방지 상태를 유지한다. 복구 확인에 실패하면 완료로 처리하지 않는다. 작업 재개와 복구 분기에는 모의 검증을 적용했으며, 이를 실제 운영 변환 완료 검증과 구분한다.
 
 ## 연결을 유지하는 방법 조사
 
@@ -32,7 +40,7 @@ USB를 Pi에 연결한 상태에서 Windows 기본 NTFS 기능으로 압축 해�
 | NTFS3 속성 해제 | 실제 시험 파일에서 `EOPNOTSUPP` 확인. 비어 있지 않은 일반 NTFS 압축 파일의 제자리 변환을 지원하지 않음. | 사용하지 않음 |
 | NTFS-3G `nocompression` 또는 파일 `setfattr` | 기존 파일 압축은 유지된다. 합성 이미지에서 실제 확인. | 새 파일의 압축 방지와 읽기 드라이버 교체 후보일 뿐 전체 해제 방법은 아님 |
 | NTFS-3G에서 비압축 복사본 생성 후 교체 | 합성 시험에서 비압축 복사 성공. 파일 식별자가 달라짐. 스트림·ACL·생성 시간·하드링크·충돌·복구를 별도로 보존해야 함. | 원본을 자동 교체하지 않음 |
-| Pi iSCSI + Windows NTFS | `tgt`가 로컬 블록 장치를 제공하고 Windows 기본 iSCSI Initiator가 연결하는 구성. 파일별 변환은 Windows `FSCTL_SET_COMPRESSION` 또는 `compact /u` 사용. | 합성 시험 통과, 운영 적용 준비 |
+| Pi iSCSI + Windows NTFS | `tgt`가 로컬 블록 장치를 제공하고 Windows 기본 iSCSI Initiator가 연결하는 구성. 파일별 변환은 Windows `FSCTL_SET_COMPRESSION` 또는 `compact /u` 사용. | 합성 시험 통과, 운영 변환 진행 중 |
 | USB/IP + Windows 수신 드라이버 | 검토한 `usbip-win`은 테스트 서명/재부팅 안내와 생산 환경 미준비 경고가 있다. `usbipd-win`은 Windows USB를 다른 장치로 내보내는 방향이므로 대체 수신 드라이버가 아니다. | iSCSI보다 우선하지 않음 |
 | 상용 Paragon UFSD | 2011년 공식 8.5 설명서에는 `fsutil compress clearflag`가 있다. 현재 Pi ARM64/6.18 커널용 배포물·라이선스·실제 동작은 확인하지 못함. | 즉시 사용할 수 있다고 주장하지 않음 |
 | 새 커널의 `ntfs` 드라이버 | 최신 문서에서도 `chattr`로 압축 속성을 바꾸는 기능은 지원하지 않는다. 커널 교체 자체는 압축 해제 방법이 아니다. | 이 작업만을 위해 커널을 바꾸지 않음 |
@@ -51,7 +59,7 @@ USB를 Pi에 연결한 상태에서 Windows 기본 NTFS 기능으로 압축 해�
 
 - Pi 커널에서 `CONFIG_TARGET_CORE`가 비활성화되어 있어 일반 `targetcli`/LIO 구성은 그대로 사용할 수 없다.
 - 대안인 `tgt`는 사용자 공간 iSCSI 구현이다. Pi의 ARM64 패키지를 설치했고 합성 시험을 완료했다. 서비스 시작 시 전체 주소에 기본 노출하지 않는다. LAN 주소 한정 구성 또는 loopback 바인딩과 SSH 포워딩 구성이 가능하며, 후자의 Windows 연결과 정상 분리를 합성 디스크로 검증했다.
-- PC에 `MSiSCSI`, `Connect-IscsiTarget`, `Get-IscsiSession`, `Get-Disk`가 있다. 서비스는 중지 상태이고 현재 실행 프로세스는 관리자 권한이 아니다. 관리자 세션에서 연결 준비가 필요하다.
+- PC에 `MSiSCSI`, `Connect-IscsiTarget`, `Get-IscsiSession`, `Get-Disk`가 있다. 최초 연결 이후 동일한 관리자 세션을 유지해 작업을 실행한다.
 - iSCSI 연결·Windows 변환·Pi 재마운트까지 합성 시험을 완료했다. 운영 데이터 처리 결과는 별도로 기록한다.
 
 ## iSCSI를 이용한 후속 절차
@@ -78,7 +86,7 @@ USB를 Pi에 연결한 상태에서 Windows 기본 NTFS 기능으로 압축 해�
 - [NTFS-3G 압축 설명](https://github.com/tuxera/ntfs-3g/wiki/Using-Transparently-Compressed-Files), [Debian NTFS-3G 매뉴얼](https://manpages.debian.org/trixie/ntfs-3g/ntfs-3g.8.en.html): 새 파일과 기존 파일의 압축 동작 구분.
 - [TGT 공식 저장소](https://github.com/fujita/tgt), [tgtd](https://manpages.debian.org/trixie/tgt/tgtd.8.en.html), [targets.conf](https://manpages.debian.org/trixie/tgt/targets.conf.5.en.html): 사용자 공간 구현, LAN 바인딩, 로컬 블록 장치, 접속 제한과 인증.
 - [Microsoft Connect-IscsiTarget](https://learn.microsoft.com/en-us/powershell/module/iscsi/connect-iscsitarget): Windows 연결 인터페이스.
-- [OpenSSH 매뉴얼](https://man.openbsd.org/ssh): `-L` TCP 포워딩과 명시적인 loopback 바인딩. iSCSI와의 전체 조합은 현장 검증 전이다.
+- [OpenSSH 매뉴얼](https://man.openbsd.org/ssh): `-L` TCP 포워딩과 명시적인 loopback 바인딩. iSCSI와의 조합은 별도의 합성 디스크 시험으로 검증했다.
 - [Hitachi 동시 접근 설명](https://docs.hitachivantara.com/r/en-us/mk-92hnas006-33/block-level-access-through-iscsi/configuring-iscsi-logical-units/concurrent-access-to-logical-units): 일반 NTFS 볼륨에 대한 독립적인 동시 마운트의 충돌.
 - [usbip-win](https://github.com/cezanne/usbip-win), [usbipd-win](https://github.com/dorssel/usbipd-win): 수신/송신 방향과 설치 제약.
 - [Paragon 8.5 설명서](https://download.paragon-software.com/doc/Paragon_NTFS-HFS_for_Linux_8.5_User_Manual.pdf): 2011년 설명서의 인쇄 쪽50/PDF 쪽55. 오래된 명령 설명을 현재 Pi 지원 근거로 사용하지 않는다.
