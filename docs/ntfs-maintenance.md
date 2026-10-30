@@ -30,6 +30,14 @@ USB를 Pi에 연결한 상태에서 Windows 기본 NTFS 기능으로 압축 해�
 
 한 번 승인받은 관리자 셸에서 필요한 작업을 순서대로 실행한다. 대기열과 작업 상태는 로컬의 제한된 디렉터리에 두며 저장소에는 포함하지 않는다. 후속 처리는 Windows 연결 해제가 확인되고 Pi 대상에도 연결이 없을 때만 Linux 소유권을 복구한다. 분리가 확인되지 않으면 마운트 방지 상태를 유지한다. 복구 확인에 실패하면 완료로 처리하지 않는다. 작업 재개와 복구 분기에는 모의 검증을 적용했으며, 이를 실제 운영 변환 완료 검증과 구분한다.
 
+### PowerShell 진행 화면
+
+`scripts/watch-ntfs-progress.ps1`은 관리자 권한 없이 5초 간격으로 진행 상태를 표시한다. `-StateDirectory`에 유지보수 상태 폴더, `-DiskSerial`에 Windows에서 확인한 iSCSI 디스크 일련번호를 지정한다. Python 실행 위치는 `-Python`으로 지정할 수 있다. `-Once`는 한 번만 출력하며, 기본 실행은 창을 닫거나 Ctrl+C를 누를 때까지 표시한다. 화면을 종료해도 변환 작업은 계속된다.
+
+상태 폴더의 `real-worker/inventory.sqlite3`, `real-worker/progress.json`, `real-maintenance-result.json`, `maintenance-supervisor.json`, `restoration-result.json`을 사용한다. `ntfs_progress_snapshot.py --state-directory <상태 폴더>`가 읽기 전용 SQLite 집계와 상태 JSON을 제공한다. 원본 파일이나 파일 경로는 조회·출력하지 않는다. 오류 메시지 원문도 표시하지 않는다.
+
+완료 데이터 건수·완료 용량·폴더 속성·오류 수는 DB에 기록된 확정 결과다. 데이터 건수는 추가 데이터 스트림을 포함하므로 실제 파일 수와 다를 수 있다. 큰 파일 내부의 진행률과 정확한 ETA는 제공하지 않는다. 이때 완료 수가 바뀌지 않아도 Windows 디스크 성능 카운터의 읽기·쓰기 속도로 I/O가 계속되는지 확인할 수 있다. 용량 백분율은 완료된 스트림만 포함하며 디스크 전송량을 완료량으로 간주하지 않는다. Windows 연결 해제·Pi 복구 단계에는 장치/속도 조회를 중단한다.
+
 ## 연결을 유지하는 방법 조사
 
 **USB를 Windows PC에 물리적으로 옮겨야 한다는 이전 판단을 정정한다.** Pi에서 디스크를 iSCSI로 제공하고 Windows가 그 디스크를 단독으로 마운트하면, 케이블을 옮기지 않고 Windows의 NTFS 압축 해제 기능을 사용할 수 있는 구성이 된다. 아래 판단은 공식 문서·소스와 설치 환경 점검에 근거하며, 합성 iSCSI 시험 결과와 운영 파일 압축 해제 결과를 구분한다.
