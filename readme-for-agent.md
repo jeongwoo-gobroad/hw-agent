@@ -10,6 +10,8 @@ NTFS 압축/SMB 읽기 유지보수는 `docs/ntfs-maintenance.md`를 먼저 확�
 
 Windows 조회 화면은 `scripts/watch-ntfs-progress.ps1`, 집계는 `scripts/ntfs_progress_snapshot.py`입니다. 상태 폴더와 디스크 일련번호를 인자로 받고, SQLite를 읽기 전용으로 조회해 개별 경로 없이 처리 수·완료 용량을 표시합니다. 큰 파일 내부의 진행률을 추정하지 않으며 디스크 속도는 별도 지표입니다. `tests/test_ntfs_progress.py`는 미확정 DB 변경의 비노출과 경로 비노출, 없는 DB를 생성하지 않는 동작을 검사합니다.
 
+유지보수 중 접근 거부는 첫 변환 후 Windows 기본 도구로 제한적으로 재시도하고, 보안 프로그램 차단은 별도 미해결 항목으로 남깁니다. 재시도·분리·복구는 기존 관리자 세션과 단독 마운트 원칙을 유지합니다. 보안 설정 변경이나 격리 파일 자동 복원은 수행하지 않습니다. 자세한 검증 범위는 `docs/ntfs-maintenance.md`를 확인합니다.
+
 ## 디렉터리 지도
 
 | 파일/폴더 | 책임과 변경 시 함께 확인할 대상 |
