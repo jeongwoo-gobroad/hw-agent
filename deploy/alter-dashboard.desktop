@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Open Alter dashboard
+Name[ko]=Alter 화면 열기
+Comment=Open the local touch dashboard in Chromium
+Comment[ko]=내부 11977 터치 대시보드를 다시 엽니다
+Exec=chromium --app=http://127.0.0.1:11977/panel --start-maximized --user-data-dir=/home/jeongwoo/.config/alter-chromium --no-first-run
+Icon=web-browser
+Terminal=false
+StartupNotify=true
+Categories=Network;WebBrowser;

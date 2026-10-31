@@ -1,5 +1,6 @@
 [Unit]
 Description=Dim the built-in display after five minutes of inactivity
+ConditionPathExists=/sys/class/backlight/panel_backlight@1
 StartLimitIntervalSec=0
 
 [Service]

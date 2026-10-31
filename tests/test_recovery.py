@@ -58,6 +58,43 @@ class RecoveryTests(unittest.TestCase):
             self.assertEqual(recovery.check_smartthings(), 2)
             self.assertEqual(devices.call_count, 2)
 
+    def test_boot_reads_registrations_without_scanning_content_tables(self):
+        original_connect = db.connect
+        statements = []
+        from contextlib import contextmanager
+
+        @contextmanager
+        def traced_connect():
+            with original_connect() as connection:
+                connection.set_trace_callback(statements.append)
+                yield connection
+
+        with patch.object(db, "connect", traced_connect), \
+             patch.object(recovery.storage, "devices", return_value=[]), \
+             patch.object(recovery.storage, "restore_shares"):
+            self.assertEqual(recovery.restore_storage(), {"registered": 0, "missing": 0})
+        self.assertFalse(any("quick_check" in sql.lower() or "from files" in sql.lower()
+                             for sql in statements))
+
+    def test_explicit_database_diagnostic(self):
+        recovery.check_database()
+
+    def test_missing_database_diagnostic_does_not_create_database(self):
+        import sqlite3
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(recovery.config, "DATA", Path(directory)):
+            with self.assertRaises(sqlite3.OperationalError):
+                recovery.check_database()
+            self.assertFalse((Path(directory) / "agent.sqlite3").exists())
+
+    def test_unreadable_registration_database_refuses_mount(self):
+        import sqlite3
+        with patch.object(db, "connect", side_effect=sqlite3.DatabaseError("malformed")), \
+             patch.object(recovery.subprocess, "run") as run:
+            with self.assertRaises(sqlite3.DatabaseError):
+                recovery.restore_storage()
+            run.assert_not_called()
+
     def test_does_not_loop_revoked_refresh(self):
         with patch.object(recovery.smartthings, "devices",
                           side_effect=HTTPException(409, "reconnect")) as devices:

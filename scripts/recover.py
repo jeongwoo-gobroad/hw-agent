@@ -1,8 +1,10 @@
 """Recover saved resources and verify readiness without changing credentials."""
+import argparse
 import fcntl
 import json
 import os
 from pathlib import Path
+import sqlite3
 import subprocess
 import sys
 import time
@@ -46,8 +48,7 @@ def tunnel():
 
 def restore_storage():
     with db.connect() as connection:
-        if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
-            raise RuntimeError("데이터베이스 검사 실패. 자동 초기화하지 않습니다. 백업 복구가 필요합니다.")
+        # 큰 색인 전체 검사는 부팅마다 하지 않고 명시적인 진단으로 분리한다.
         registered = {row[0] for row in connection.execute("SELECT uuid FROM roots")}
     with db.connect() as connection:
         if connection.execute("SELECT 1 FROM sqlite_master WHERE name='photo_roots'").fetchone():
@@ -71,6 +72,20 @@ def restore_storage():
     return {"registered": len(registered), "missing": len(registered - present)}
 
 
+def check_database():
+    uri = (config.DATA / "agent.sqlite3").resolve().as_uri() + "?mode=ro"
+    with sqlite3.connect(uri, uri=True, timeout=30) as connection:
+        results = [row[0] for row in connection.execute("PRAGMA quick_check")]
+        if results != ["ok"]:
+            raise RuntimeError("데이터베이스 검사 실패. 자동 초기화하지 않습니다. 백업 복구가 필요합니다.")
+
+
+def save_status(status):
+    temporary = config.DATA / "startup-status.json.tmp"
+    temporary.write_text(json.dumps(status, ensure_ascii=False, indent=2))
+    temporary.replace(config.DATA / "startup-status.json")
+
+
 def check_smartthings():
     try:
         devices = smartthings.devices()
@@ -89,7 +104,7 @@ def main():
     except BlockingIOError:
         print("다른 시작/부팅 복구가 실행 중입니다. 잠시 후 다시 실행하세요.")
         return 1
-    status = {"checked_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "checks": {}}
+    status = {"checked_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "checks": {}, "running": True}
     code = 0
     steps = [
         ("웹 서버", lambda: wait_for(lambda: healthy("http://127.0.0.1:11977/health"))),
@@ -99,6 +114,8 @@ def main():
         ("SmartThings", check_smartthings),
     ]
     for name, check in tqdm(steps, desc="Alter 준비", unit="단계", disable=not sys.stderr.isatty()):
+        status["current_step"] = name
+        save_status(status)
         try:
             result = check()
             status["checks"][name] = {"ok": True, "result": result}
@@ -122,14 +139,21 @@ def main():
             status["checks"][name] = {"ok": False, "message": message}
             code = 1
             print(name + ": " + message, flush=True)
+        save_status(status)
     status["exit_code"] = code
-    temporary = config.DATA / "startup-status.json.tmp"
-    temporary.write_text(json.dumps(status, ensure_ascii=False, indent=2))
-    temporary.replace(config.DATA / "startup-status.json")
+    status.update(running=False, current_step=None)
+    save_status(status)
     print("내부 대시보드: http://192.168.0.44:11977/", flush=True)
     print("준비 완료." if code == 0 else "일부 항목에 확인이 필요합니다.", flush=True)
     return code
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check-database", action="store_true", help="전체 DB 검사만 실행합니다. 큰 DB에서는 오래 걸릴 수 있습니다.")
+    args = parser.parse_args()
+    if args.check_database:
+        check_database()
+        print("데이터베이스 검사 완료.")
+    else:
+        sys.exit(main())

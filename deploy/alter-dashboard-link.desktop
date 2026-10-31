@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Link
+Name=Open Alter dashboard
+Name[ko]=Alter 화면 열기
+Comment=Open the local touch dashboard in Chromium
+Comment[ko]=내부 11977 터치 대시보드를 다시 엽니다
+URL=/usr/local/share/applications/alter-dashboard.desktop
+Icon=web-browser

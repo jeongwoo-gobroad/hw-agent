@@ -12,5 +12,10 @@ mkdir -p "$HOME/.config/systemd/user" "$HOME/.config/autostart"
 install -m 644 deploy/alter-display.service "$HOME/.config/systemd/user/"
 install -m 644 deploy/alter-panel.desktop "$HOME/.config/autostart/"
 install -m 644 deploy/alter-display.desktop "$HOME/.config/autostart/"
+desktop_dir="$(xdg-user-dir DESKTOP)"
+mkdir -p "$desktop_dir"
+# 시스템에 설치한 앱을 링크하면 PCManFM의 스크립트 실행 확인창을 피할 수 있습니다.
+sudo install -D -m 644 deploy/alter-dashboard.desktop /usr/local/share/applications/alter-dashboard.desktop
+install -m 644 deploy/alter-dashboard-link.desktop "$desktop_dir/Alter-Dashboard.desktop"
 systemctl --user daemon-reload
 systemctl --user enable --now alter-display.service

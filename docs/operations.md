@@ -57,6 +57,8 @@ Windows `scripts/deploy.py`는 git 추적 소스를 SFTP 전송하고 hash를 �
 
 ## 터치 디스플레이 운영
 
+Pi 바탕화면의 **Alter 화면 열기**를 실행하면 Chromium에서 내부 `http://127.0.0.1:11977/panel` 화면을 엽니다. 기존 전용 브라우저 프로필을 사용하므로 저장된 로그인 세션을 이어 사용합니다. 세션이 만료됐으면 다시 로그인하세요. `scripts/install-startup.sh`는 XDG 바탕화면 위치에 실행 가능한 바로가기를 설치합니다. 이 바로가기는 브라우저 진입점이며 서버 복구가 필요할 때는 프로젝트 루트의 `Start-Alter.desktop`을 사용합니다.
+
 Pi Chromium 시작 주소는 http://127.0.0.1:11977/panel 입니다. 업데이트 후 기존 창을 새로고침하면 전용 터치 UI가 적용됩니다. DSI는720×1280에270도 회전하여 가로1280×720으로 설정되어 있습니다. OS에서 인식되는 마이크가 필요하며, 원격 Chrome에서는 그 컴퓨터의 마이크를 사용합니다. 녹음은 Pi로 전송되고 처리 뒤 삭제됩니다. LAN IP의 HTTP에서는 브라우저 마이크가 제한되므로 ngrok HTTPS 또는 Pi localhost를 사용하세요.
 
 ‘음성 입력’은 전사 내용을 확인하고 보내며, ‘얼터 호출 대기’는 호출어와 요청을 함께 인식하면 챗봇으로 전달합니다. 최종 기기 실행 확인은 유지합니다. 처리 중에는 계속 듣지 않으며 6초 녹음과 전사를 반복합니다. 녹음 종료 버튼/호출 대기 끄기/페이지 숨김으로 마이크를 종료합니다. 소음 환경의 호출 오탐률은 검증되지 않았습니다.
@@ -67,11 +69,25 @@ Pi Chromium 시작 주소는 http://127.0.0.1:11977/panel 입니다. 업데이�
 2. 확인하려면 프로젝트 루트의 Start-Alter.desktop을 실행합니다. 처음 파일 관리자에서 실행 여부를 물으면 실행을 선택합니다. start.sh --no-browser는 화면 없는 점검입니다.
 3. Windows에서는 D:\_rpi-agent\Start-Alter.cmd를 실행하면 SSH 인증 후 같은 점검을 수행합니다. 호스트 키 첫 확인은 실제 Pi 키와 대조하세요.
 4. `data/startup-status.json`의 checked_at과 각 ok 값을 확인합니다. 오래된 성공 파일만으로 이번 부팅 성공을 판단하지 마세요. systemctl status alter-recovery와 이번 부팅 journal도 확인합니다.
+
+상태 파일은 각 단계 전후에도 저장됩니다. `running: true`와 `current_step`은 진행 중인 단계를 나타냅니다. 일반 부팅에서는 등록 테이블만 읽고 파일·사진 색인 전체의 `quick_check`를 수행하지 않습니다. 전체 DB 검사는 프로젝트 루트에서 `PYTHONPATH=src .venv/bin/python scripts/recover.py --check-database`로 별도 실행합니다. 큰 DB에서는 오래 걸릴 수 있으며 부팅 준비 완료와 전체 DB 검사 통과는 서로 다른 결과입니다.
 5. SmartThings 재연결 안내가 나오면 대시보드 스마트홈에서 삼성 계정으로 로그인합니다. 계정 동의나 철회된 권한을 자동 우회할 수는 없습니다.
 
 정상 부팅 때는 수동 클릭 없이도 복구가 수행됩니다. 수동으로 stop한 서비스는 실행 파일에서 관리자 인증을 요구할 수 있습니다. 누락된 USB는 오프라인으로 표시하고, 손상된 DB는 자동 삭제하지 않습니다. 전원 차단으로 매체가 손상되면 이 실행 파일만으로 수리할 수 없습니다.
 
 ## 외장하드 재연결 및 밝기
+
+공식 7인치 Touch Display 2가 CAM/DISP1, Camera Module 3가 CAM/DISP0에 연결된 장비에서 자동 감지가 실패할 때는 `/boot/firmware/config.txt`를 백업한 뒤 다음과 같이 명시할 수 있습니다. 다른 모델이나 포트에는 그대로 적용하지 않습니다. 실제 커널 장치 경로와 연결 포트를 먼저 확인하고 기존 자동 감지 행은 수정하여 중복 선언하지 않습니다.
+
+```ini
+[all]
+display_auto_detect=0
+camera_auto_detect=0
+dtoverlay=vc4-kms-dsi-ili9881-7inch
+dtoverlay=imx708,cam0
+```
+
+기존 KMS 설정은 유지합니다. 정상 재부팅 후 DSI 연결·720×1280 모드, Goodix 터치, 백라이트 장치와 `rpicam-hello --list-cameras`의 IMX708을 확인합니다. 운영 카메라가 이미 촬영 중이면 별도 캡처 프로그램을 동시에 실행하지 않습니다. 화면 공유는 물리 패널의 밝기 흔들림·잔상을 검증하지 못하므로 실제 화면 관찰을 별도로 기록합니다. 설정 근거는 [Touch Display 2](https://www.raspberrypi.com/documentation/accessories/touch-display-2.html), [Camera Module 설정](https://www.raspberrypi.com/documentation/accessories/camera-software.html)입니다.
 
 드라이브 화면의 볼륨 ID는 파일시스템 UUID입니다. 같은 USB가 다른 마운트 폴더로 연결되어도 재등록 시 기존 root를 갱신하며 색인을 중복 생성하지 않습니다. 포맷/복제 시 UUID가 바뀌거나 충돌할 수 있습니다. 동일 UUID 장치 여러 개를 함께 연결하지 마세요.
 

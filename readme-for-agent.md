@@ -86,9 +86,13 @@ Flow는 실행 결과를 저장하고 실패 단계에서 멈춥니다. 물리 �
 
 ## 시작·부팅 복구
 
+`deploy/alter-dashboard.desktop`은 Pi 바탕화면용 브라우저 진입점입니다. `scripts/install-startup.sh`가 `xdg-user-dir DESKTOP` 위치에 설치합니다. 기존 alter-chromium 프로필과 localhost11977/panel을 사용하며 서버 상태나 인증 설정을 바꾸지 않습니다. 자동 로그인 시작 항목 `deploy/alter-panel.desktop` 및 서버 복구 실행 파일과 구분합니다.
+
+Pi의 PCManFM에서 확인창 없이 열리도록 앱 항목은 `/usr/local/share/applications/alter-dashboard.desktop`에 모드 644로 설치하고, 바탕화면에는 `deploy/alter-dashboard-link.desktop`을 복사합니다. 전체 파일의 실행 확인을 끄는 전역 설정은 변경하지 않습니다.
+
 최상위 start.sh는 서비스가 active/activating/reloading이면 그대로 두고 중지된 서비스만 sudo로 시작합니다. 새로운 무암호 sudo 권한은 부여하지 않습니다. Start-Alter.desktop은 Pi, Start-Alter.cmd는 Windows SSH 진입점입니다. scripts/install-startup.sh는 root-owned systemd unit을 설치·enable합니다.
 
-scripts/recover.py는 데이터 초기화(db.init)를 호출하지 않습니다. flock으로 부팅/수동 복구 중복을 막고, 웹/모델 health를 기다린 뒤 DB quick_check와 등록된 UUID만 마운트합니다. 기존 제한된 alter-disk helper를 재사용하고 임의 디스크는 건드리지 않습니다. UDisks가 먼저 다른 경로로 마운트하면 해당 경로를 사용하고 SMB 경로를 복원합니다. ngrok 로컬 터널 API와 공개 health를 모두 확인하며 저장된 토큰은 smartthings.devices/access_token 경로로 필요할 때 갱신합니다. 토큰은 출력하지 않습니다.
+scripts/recover.py는 데이터 초기화(db.init)를 호출하지 않습니다. flock으로 부팅/수동 복구 중복을 막고, 웹/모델 health를 기다린 뒤 등록 테이블에서 읽은 UUID만 마운트합니다. 큰 색인 전체를 읽는 quick_check는 일반 부팅에서 실행하지 않습니다. `PYTHONPATH=src .venv/bin/python scripts/recover.py --check-database`는 별도의 전체 DB 검사만 수행하며, 정상 부팅 성공이 전체 DB 무결성을 보증하지는 않습니다. 등록 정보 조회가 실패하면 마운트를 시작하지 않으며 DB를 삭제하지 않습니다. 기존 제한된 alter-disk helper를 재사용하고 임의 디스크는 건드리지 않습니다. UDisks가 먼저 다른 경로로 마운트하면 해당 경로를 사용하고 SMB 경로를 복원합니다. ngrok 로컬 터널 API와 공개 health를 모두 확인하며 저장된 토큰은 smartthings.devices/access_token 경로로 필요할 때 갱신합니다. 토큰은 출력하지 않습니다. startup-status.json은 단계 전후에 갱신하며 running/current_step으로 진행 중인 단계와 오래된 완료 기록을 구분합니다.
 
 종료0=성공,1=일시적/설정 오류,2=SmartThings 재로그인 필요. alter-recovery.service는 실패1을60초 후 재시도하며2는 자동 재시도하지 않습니다. 결과 JSON은 임시 파일+replace로 갱신됩니다. 핵심 서비스의 StartLimitIntervalSec=0은 장기 네트워크 장애 뒤에도 재시도가 정지되지 않게 합니다. 재시도 간격은 기존 RestartSec를 따릅니다. 복구는 원본 삭제/포맷/자격증명 교체를 수행하지 않습니다.
 
@@ -99,6 +103,10 @@ roots.relative_path와 UNIQUE(uuid,relative_path)가 등록의 영구 식별자�
 사용자 서비스 deploy/alter-display.service는 swayidle timeout300/resume으로 scripts/display_brightness.py를 호출합니다. 고정 대상은 실제 확인된 /sys/class/backlight/panel_backlight@1입니다. dim은 최초 현재 밝기를 저장하고1로 설정, restore는 저장값을1..max 범위로 복원합니다. flock과 atomic replace로 중복 dim과 상태 파일 경합을 방지합니다. 서비스 중단 시에도 원래 밝기를 복원합니다. 사용자 default.target enable 및 XDG autostart로 재로그인 후 실행합니다. 새로운 sudoers/그룹 권한은 만들지 않습니다. 화면 공유 픽셀은 백라이트 밝기를 반영하지 않으므로 sysfs 실제값도 검증해야 합니다.
 
 서버 요청 처리와 화면 활동은 독립적입니다. API/웹소켓/모델 토큰/색인/카메라/SmartThings 이벤트에서 밝기 복원이나 idle reset을 호출하지 않습니다. PC의 일반 대시보드 사용도 제외하며, Pi Wayland seat로 전달되는 터치·마우스·키보드(화면 공유 입력 포함)만 입력 활동입니다.
+
+`alter-display.service`는 백라이트 장치가 존재할 때만 시작합니다. 패널 미감지 시 재시작을 반복하지 않으며, 이것을 화면 복구 성공으로 처리하면 안 됩니다. 패널 연결을 복구한 다음 부팅하거나 서비스를 시작하고 실제 밝기·터치·5분 유휴 동작을 다시 검증해야 합니다.
+
+공식 Touch Display 2 7인치와 Camera Module 3의 명시적 포트 설정은 docs/operations.md를 참고합니다. 적용 전에 부팅 설정을 백업하고 실제 장치 경로로 포트를 확인합니다. 자동 감지와 명시적 오버레이를 중복 사용하지 않습니다. DSI·터치·백라이트 노드가 생겨도 물리 화면의 잔상이나 깜빡임이 해결됐다고 추정하지 않습니다.
 
 SMB/색인 선택 분리: app.js browse(path,target)는 index/share별 독립 컨테이너를 사용합니다. loadRoots는 SMB 폼을 변경하지 않습니다. roots 테이블은 검색 대상, state.shares는 공유 대상이며 API는 각각 독립입니다. recover.restore_storage는 roots와 shares의 UUID 합집합만 마운트합니다. 설치 시 wsdd2를 활성화하여 Windows WSD 검색을 지원합니다.
 
