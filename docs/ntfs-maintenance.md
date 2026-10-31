@@ -95,11 +95,37 @@ ETA 범위에는 오류 항목의 별도 재시도, Windows 분리, Pi 공유 �
 
 읽기 멈춤 완화만 필요하다면 `ntfs3`에서 `ntfs-3g`로 정상 재마운트하는 별도 방안도 있다. 압축 읽기 구현이 달라지는 것이므로 현장 검증이 필요하며, 이를 전체 압축 해제로 보고하지 않는다. 압축 읽기의 잠금 순서 문제를 고치는 [공식 커널 커밋](https://github.com/torvalds/linux/commit/e37a75bb866c29da954b51d0dd7670406246d9ee)도 확인했지만 현재 Pi 현상의 정확한 원인/해결 버전과 동일하다고 확정하지 않는다.
 
+## 변환 중 임시 읽기 창
+
+`scripts/read-ntfs-files.py`는 Windows가 단독으로 마운트한 유지보수 볼륨에서 읽기가 가능한 파일을 PC Chrome으로 제공한다. Pi의 기존 SMB를 재개하거나 두 OS에서 동시에 마운트하지 않는다. Python 표준 라이브러리만 사용하며 별도 관리자 권한을 요구하지 않는다.
+
+로컬 비공개 JSON 설정에 다음 값을 지정한다. 설정과 작업 DB는 공개 저장소에 넣지 않는다.
+
+| 설정 | 의미 |
+| --- | --- |
+| `state_directory` | 기존 Windows 작업·supervisor 상태 및 `real-worker/inventory.sqlite3`가 있는 폴더 |
+| `root` | Windows에서 확인한 볼륨 GUID 루트 또는 드라이브 루트 |
+| `volume_serial` | 해당 볼륨의 8자리 16진수 일련번호 |
+| `port` | PC loopback 포트. 기본값 11979 |
+| `token` | 암호학적으로 무작위 생성한 32자 이상의 로컬 접근 토큰 |
+| `excluded_names` | 표시·접근에서 제외할 경로 구성요소/파일명 배열 |
+
+직접 실행은 `python scripts/read-ntfs-files.py --config <비공개 설정.json>`, Chrome 실행까지는 `scripts/open-ntfs-reader.ps1 -Config <비공개 설정.json> -Python <python.exe>`를 사용한다. 실행기는 같은 설정으로 이미 실행 중인 서버를 재사용한다. 서버는 **127.0.0.1에만 바인딩**하며 LAN·외부 공유용으로 사용하지 않는다. 접근 토큰은 URL fragment로 전달된 뒤 주소에서 제거되고 HttpOnly·SameSite=Strict 쿠키로 유지된다. Host·Origin 검사도 적용한다.
+
+시작 화면의 **파일 탐색 시작**을 누르면 폴더 탐색, 전체 파일명 검색, 미리보기·다운로드를 사용할 수 있다. SQLite를 읽기 전용으로 열어 `done` 및 원래 비압축인 `uncompressed` 항목만 목록에 포함한다. 파일 본문 검색, 자동 썸네일 생성, 원본 수정 기능은 없다. 각 파일을 선택했을 때만 내용 전송을 시작한다. PDF·일반 이미지·텍스트·일부 코드·영상은 브라우저가 지원하는 범위에서 표시하며, 지원하지 않는 형식은 다운로드한다. HEIC 변환이나 영상 재인코딩은 이 임시 창에서 하지 않는다.
+
+파일 ID·볼륨 일련번호·크기·최종 경로·압축 해제 상태를 전송 전과 각 읽기 구간마다 검사한다. 경로 이탈, 추가 데이터 스트림, 재분석 지점과 하드링크 파일은 보수적으로 거부한다. 목록이 잠시 캐시되어도 파일을 선택할 때 DB 상태를 다시 확인한다. 한 번에 한 파일을 최대 8MiB/s로 전송하며 256KiB를 읽은 뒤 파일 핸들을 닫고 네트워크로 전달한다. 이 제한은 변환 작업과의 I/O 경합을 줄이기 위한 것으로, 기존 변환 속도가 유지된다는 보장은 아니다.
+
+Windows 작업이 변환 단계를 벗어나거나 supervisor 갱신이 90초 이상 끊기면 접근을 차단하고 서버를 종료한다. 최대 실행 시간은 12시간이며 상태가 바뀐 뒤 자동 재시작하지 않는다. 브라우저 탭은 종료 안내를 표시한다. 연결 해제 직전에는 임시 서버 종료와 파일 핸들 해제를 함께 확인한다. 진행률·supervisor·변환 코드는 변경하지 않는다.
+
+검증은 합성 자료로 수행했다. Windows에서 볼륨 GUID 경로 읽기, 파일 ID 불일치·하드링크 거부, HTTP 인증·범위 요청과 전송 도중 연결 해제 상태 전환을 검사했다. Chrome에서 폴더 이동·파일명 검색·텍스트 미리보기·다운로드를 확인하고 다운로드 내용이 합성 원문과 일치함을 확인했다. 이는 실제 개인 파일 전체의 읽기나 각 미디어 코덱을 검증한 결과가 아니다. 회귀 시험은 `python -m unittest discover -s tests -p test_ntfs_reader.py -v`이며 Windows 네이티브 시험은 다른 OS에서 건너뛴다.
+
 ## 근거
 
 - [Linux NTFS3 문서](https://docs.kernel.org/filesystems/ntfs3.html): `system.ntfs_attrib`의 압축/희소 속성 전환 제약.
 - [Raspberry Pi NTFS3 구현](https://github.com/raspberrypi/linux/blob/rpi-6.18.y/fs/ntfs3/frecord.c): `ni_new_attr_flags`에서 비어 있지 않은 nonresident 데이터의 전환을 거부한다. 브랜치 내용은 변경될 수 있으며 운영 장비 시험 결과와 구분한다.
 - [Microsoft compact](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/compact): 폴더 기본 압축 속성과 기존 파일 상태, 재귀 옵션의 범위.
+- [Microsoft CreateFileW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew), [파일 ID 조회](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileinformationbyhandle), [최종 경로 조회](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew): 임시 읽기 창의 기존 파일 열기·정체성 확인.
 - [Microsoft FSCTL_SET_COMPRESSION](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-fsctl_set_compression): 운영체제의 파일별 압축 상태 변경 기능. SMB 프로토콜 지원이 개별 Samba 서버의 구현 지원을 보장하지는 않는다.
 - [Samba 4.22.11 기본 VFS](https://github.com/samba-team/samba/blob/samba-4.22.11/source3/modules/vfs_default.c): `vfswrap_set_compression` 구현.
 - [NTFS-3G 2022.10.3 속성 처리](https://github.com/tuxera/ntfs-3g/blob/2022.10.3/libntfs-3g/security.c): `FILE_ATTR_SETTABLE`, `ntfs_set_ntfs_attrib`.

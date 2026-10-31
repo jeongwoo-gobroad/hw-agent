@@ -157,3 +157,16 @@ repeat_seconds는 실행 시작 간격이 아니라 Flow 완료 후 최소 대�
 상세 스키마·복구·한계는 docs/indexing-security.md. 기존 JSON 진행률은 더 이상 기록/조회하지 않으며 DB state가 원본이다. 외부 드라이브 파일과 사용자 DB를 Git에 넣지 않는다.
 
 NTFS 읽기 유지보수: `deploy/alter-disk`는 NTFS-3G와 `nocompression`을 명시합니다. 운영 장비에서 관측한 NTFS3 압축 읽기 교착을 회피하기 위한 선택이며 기존 압축 해제와는 별개입니다. root 소유 유지보수 마커가 있으면 장치 조회/마운트 전에 거부합니다. `tests/test_disk_maintenance.py`는 이 경계를 검사합니다.
+
+## Windows 유지보수 임시 파일 창
+
+변환 중 Windows 단독 마운트를 유지하면서 PC에서 완료 파일을 읽기 위한 독립 도구다. 앱 서버·SMB·변환 worker를 시작하거나 변경하지 않는다. 설정과 사용법은 [docs/ntfs-maintenance.md](docs/ntfs-maintenance.md)의 임시 읽기 창 절을 따른다.
+
+- `scripts/read-ntfs-files.py`, `open-ntfs-reader.ps1`: 비공개 JSON 설정으로 서버를 실행하고 Chrome을 연다. 이미 같은 설정으로 실행 중인 loopback 서버는 재사용한다. Python 표준 라이브러리 외 의존성은 없다.
+- `scripts/ntfs_reader/catalog.py`: SQLite read-only 연결, `done`/`uncompressed` 필터, 제외 이름·루트 경계·ADS 검사, HMAC 기반 불투명 파일/폴더 ID, 15초 목록 캐시. `lookup`은 전송 직전 DB 상태를 재확인한다. Gate는 Windows 변환 단계·safe_to_restore=false·supervisor 대기 단계와 90초 이내 heartbeat를 요구한다.
+- `scripts/ntfs_reader/windows.py`: Windows 네이티브 읽기 전용 핸들. 매 256KiB 이하 구간마다 조상 재분석 지점, 파일 ID, 볼륨 일련번호, 크기, 링크 수, 최종 경로, 압축 상태를 검사하고 읽기 후 핸들을 닫는다. 파일 내용 해시나 원본 수정은 하지 않는다.
+- `scripts/ntfs_reader/server.py`: 127.0.0.1 전용 HTTP, 토큰→HttpOnly 세션, Host/Origin 검사, 읽기 전용 API. `/api/status`, `/api/list`(folder/q/offset, 100개 페이지), `/api/file/<id>`(Range 및 download=1), 세션 설정용 `/api/session` POST만 제공한다. 파일 전송은 한 번에 하나, 최대 8MiB/s이며 경로·파일명을 서버 로그에 남기지 않는다.
+- `scripts/ntfs_reader/static/`: 클릭 후 목록을 여는 폴더/검색 UI, 형식별 브라우저 미리보기와 다운로드, 라이트/다크 테마. 자동 썸네일·본문 검색은 없다. 서버 종료 후 탭에는 종료 안내를 표시한다.
+- `tests/test_ntfs_reader.py`: 합성 DB·파일로 필터/인증/범위 요청, Windows 파일 정체성, 하드링크 거부 및 전송 중 상태 전환을 검증한다. 운영 파일 내용으로 시험하지 않는다.
+
+상태 폴더에 `reader-status.json`(pid/port/active/시작 또는 종료 시각, 종료 시 총 전송 바이트)을 기록한다. 변환 단계 이탈, supervisor heartbeat 만료 또는 실행 12시간 경과 시 서버가 종료된다. 복구 절차에서 reader 종료까지 확인하고 기존 Windows 분리/대상 연결 부재 조건을 그대로 적용한다. 설정·토큰·DB·개별 경로·운영 스크린샷은 Git에 넣지 않는다. Pi에는 소스/문서만 배포하며 Windows 네이티브 읽기 서버를 Pi에서 실행하지 않는다.
