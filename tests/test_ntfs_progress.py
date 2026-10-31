@@ -35,6 +35,7 @@ class ProgressSnapshotTests(unittest.TestCase):
                 snapshot = progress.snapshot(base)
                 self.assertEqual(snapshot['inventory']['stream'], {
                     'total':2,'done':1,'pending':1,'error':0,'logical_bytes':1000,'done_bytes':100,
+                    'pending_bytes':900,'error_bytes':0,'next_pending_bytes':900,
                 })
                 self.assertEqual(snapshot['inventory']['directory']['done'],1)
                 self.assertNotIn('private-',json.dumps(snapshot))

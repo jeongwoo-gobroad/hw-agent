@@ -8,6 +8,8 @@
 
 $ErrorActionPreference = 'Stop'
 $snapshotScript = Join-Path $PSScriptRoot 'ntfs_progress_snapshot.py'
+$etaScript = Join-Path $PSScriptRoot 'ntfs_progress_eta.py'
+$etaHistory = Join-Path $StateDirectory 'progress-eta-history.json'
 $Host.UI.RawUI.WindowTitle = 'NTFS 압축 해제 진행 상황'
 $diskIndex = $null
 $lastDiscovery = [datetime]::MinValue
@@ -32,13 +34,18 @@ function Phase-Text($value) {
 }
 function Percent($done, $total) {
     if ($total -le 0) { return 0.0 }
-    return [math]::Min(100, 100.0 * $done / $total)
+    return [math]::Min(100.0, 100.0 * $done / $total)
 }
 function Size-Text($bytes) {
     if ($null -eq $bytes) { return '확인 중' }
     if ($bytes -ge 1TB) { return ('{0:N2} TiB' -f ($bytes / 1TB)) }
     if ($bytes -ge 1GB) { return ('{0:N2} GiB' -f ($bytes / 1GB)) }
     return ('{0:N2} MiB' -f ($bytes / 1MB))
+}
+function Duration-Text($seconds) {
+    $minutes = [math]::Ceiling($seconds / 60)
+    if ($minutes -lt 60) { return ('{0:N0}분' -f $minutes) }
+    return ('{0:N0}시간 {1:N0}분' -f [math]::Floor($minutes / 60), ($minutes % 60))
 }
 
 try {
@@ -69,6 +76,18 @@ try {
             }
         } catch { $io = $null }
 
+        $eta = $null
+        if ($sample -and -not $stale) {
+            try {
+                $etaArguments = @($etaScript, '--history', $etaHistory)
+                if ($io -and ($io.DiskReadBytesPersec + $io.DiskWriteBytesPersec) -gt 0) {
+                    $etaArguments += '--io-active'
+                }
+                $etaRaw = $sample | ConvertTo-Json -Depth 6 -Compress | & $Python @etaArguments 2>$null
+                if ($LASTEXITCODE -eq 0) { $eta = $etaRaw | ConvertFrom-Json }
+            } catch { $eta = $null }
+        }
+
         $lines = [System.Collections.Generic.List[string]]::new()
         $lines.Add('NTFS 압축 해제 진행 상황')
         $lines.Add(('화면 갱신: {0:yyyy-MM-dd HH:mm:ss} | {1}초 간격' -f (Get-Date), $IntervalSeconds))
@@ -84,7 +103,17 @@ try {
                 $lines.Add(('확정 완료 용량: {0} / {1} ({2:N3}%)' -f (Size-Text $files.done_bytes), (Size-Text $files.logical_bytes), $bytePercent))
                 $lines.Add(('폴더 속성: {0:N0} / {1:N0}개 완료' -f $folders.done, $folders.total))
                 $lines.Add(('남은 데이터: {0:N0}건 | 변환 오류: {1:N0}건 | 조사 오류: {2:N0}건' -f $files.pending, ($files.error + $folders.error), $sample.inventory_errors))
+                $lines.Add(('남은 대기 용량: {0} | 오류 항목 용량: {1}' -f (Size-Text $files.pending_bytes), (Size-Text $files.error_bytes)))
             } else { $lines.Add('작업 DB 집계 대기 중') }
+            if ($eta -and $eta.status -eq 'estimated') {
+                $lines.Add(('최근 처리속도: {0:N1} MiB/s | 완료 기록 {1:N0}분 기준' -f ($eta.bytes_per_second / 1MB), ($eta.window_seconds / 60)))
+                $lines.Add(('현재 변환 ETA: 약 {0} ~ {1}' -f (Duration-Text $eta.seconds_low), (Duration-Text $eta.seconds_high)))
+                $lines.Add(('예상 종료 시각: {0:MM-dd HH:mm} ~ {1:MM-dd HH:mm} (PC 현지 시각)' -f (Get-Date).AddSeconds($eta.seconds_low), (Get-Date).AddSeconds($eta.seconds_high)))
+            } elseif ($eta -and $eta.status -eq 'collecting') {
+                $lines.Add('현재 변환 ETA: 완료 용량 표본 수집 중 (서로 다른 완료 기록과 1분 이상 구간 필요)')
+            } else {
+                $lines.Add('현재 변환 ETA: 대기 또는 복구 단계이거나 최신 속도 표본을 확인할 수 없습니다.')
+            }
             $lines.Add(('마지막 파일 완료 기록: {0:N0}초 전' -f $sample.record_age_seconds))
             $lines.Add(('작업 관리자 응답: {0:N0}초 전' -f $sample.supervisor_age_seconds))
             $lines.Add(('마지막 기록의 여유 공간: {0}' -f (Size-Text $sample.free_bytes_at_last_record)))
@@ -99,7 +128,8 @@ try {
         if ($stale) { $lines.Add('현재 상태를 읽지 못해 마지막 수집 결과를 표시합니다.') }
         $lines.Add('')
         $lines.Add('큰 파일은 처리 도중 완료 건수가 그대로일 수 있습니다.')
-        $lines.Add('파일 내부 진행률과 정확한 남은 시간은 제공되지 않습니다.')
+        $lines.Add('ETA는 최근 완료 속도가 유지된다는 가정입니다. 왼쪽 값만 현재 파일의 경과 시간을 추정 반영합니다.')
+        $lines.Add('오른쪽 값은 대기 용량 전체 기준입니다. 범위는 보장 시간이 아니며 오류 재시도·공유 복구는 제외합니다.')
         $lines.Add('데이터 건수는 추가 데이터 스트림을 포함하며 실제 파일 수와 다를 수 있습니다.')
         $lines.Add('이 창은 조회 전용입니다. 창 닫기 / Ctrl+C는 압축 해제에 영향을 주지 않습니다.')
         if (-not $Once) { Clear-Host }

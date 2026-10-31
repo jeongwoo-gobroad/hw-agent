@@ -8,7 +8,7 @@ NTFS 압축/SMB 읽기 유지보수는 `docs/ntfs-maintenance.md`를 먼저 확�
 
 운영 NTFS 변환은 현재 진행 중이며 공유 복구 후 검증이 남아 있습니다. 큰 파일의 네이티브 변환 중에는 파일별 진행 기록이 멈춰 보일 수 있습니다. 기존 관리자 세션과 로컬 작업 기록을 재사용하고, 새 작업이나 마운트를 중복 시작하지 않습니다. Windows 분리와 iSCSI 대상의 연결 부재를 모두 확인한 후에만 Pi 소유권을 복구합니다.
 
-Windows 조회 화면은 `scripts/watch-ntfs-progress.ps1`, 집계는 `scripts/ntfs_progress_snapshot.py`입니다. 상태 폴더와 디스크 일련번호를 인자로 받고, SQLite를 읽기 전용으로 조회해 개별 경로 없이 처리 수·완료 용량을 표시합니다. 큰 파일 내부의 진행률을 추정하지 않으며 디스크 속도는 별도 지표입니다. `tests/test_ntfs_progress.py`는 미확정 DB 변경의 비노출과 경로 비노출, 없는 DB를 생성하지 않는 동작을 검사합니다.
+Windows 조회 화면은 `scripts/watch-ntfs-progress.ps1`, 집계는 `scripts/ntfs_progress_snapshot.py`입니다. 상태 폴더와 디스크 일련번호를 인자로 받고, SQLite를 읽기 전용으로 조회해 개별 경로 없이 처리 수·완료 용량을 표시합니다. `scripts/ntfs_progress_eta.py`는 최근 약 2시간의 완료 용량 증가율과 대기 용량으로 현재 변환 단계의 ETA 범위를 계산합니다. 왼쪽 ETA만 진행 중인 한 스트림 크기 이내에서 경과 시간을 추정 반영하고, 확정 진행률은 바꾸지 않습니다. 오류 재시도와 복구 시간은 제외합니다. `progress-eta-history.json`에는 실행 식별자·시간·집계 용량만 보존하며 원본 파일이나 변환 DB는 수정하지 않습니다. 재시작·기록 불일치·오래된 상태에서는 ETA를 초기화하거나 보류합니다. 디스크 속도는 별도 지표이며 읽기·쓰기를 합산해 ETA로 사용하지 않습니다. `tests/test_ntfs_eta.py`가 계산·재개·중단·개인정보 비노출을 검사합니다. `tests/test_ntfs_progress.py`는 미확정 DB 변경의 비노출과 경로 비노출, 없는 DB를 생성하지 않는 동작을 검사합니다.
 
 `scripts/ntfs_state.py`는 유지보수 JSON을 원자적으로 갱신할 때 Windows의 일시적인 독자 잠금을 최대 10초 동안 재시도합니다. 영구 실패 시 기존 JSON을 보존하고 오류를 반환합니다. 변환 기록의 기준은 먼저 커밋된 SQLite이며 표시 파일의 갱신 실패를 처음부터 재변환하는 이유로 삼지 않습니다. `tests/test_ntfs_state.py`는 실제 Windows 읽기 핸들에 의한 교체 충돌과 지속적인 거부에서 기존 상태 보존을 검사합니다. 운영 중간 복구에서 NTFS-3G 마운트·11977 응답·SMB 합성 파일 읽기/쓰기를 확인했지만 전체 변환 및 최종 검증은 별개입니다.
 
