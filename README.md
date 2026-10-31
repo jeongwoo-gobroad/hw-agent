@@ -97,6 +97,8 @@ PYTHONPATH=src .venv/bin/python tests/test_oauth.py
 
 Pi 프로젝트 최상위 `Start-Alter.desktop`(Alter 시작 및 복구)을 실행하세요. 터미널에서는 `./start.sh` 또는 브라우저 없이 `./start.sh --no-browser`입니다. Windows 백업 폴더의 `Start-Alter.cmd`는 SSH로 같은 복구를 실행합니다(PC의 SSH 인증이 필요하며 비밀번호를 파일에 저장하지 않습니다).
 
+브라우저 창만 다시 열 때는 Pi 바탕화면의 **Alter 화면 열기**를 사용하세요. 기존 로그인 프로필로 내부 `11977/panel` 터치 대시보드를 엽니다. 세션이 만료됐으면 다시 로그인해야 합니다.
+
 서버·언어 모델·ngrok·OAuth·SMB는 부팅 자동 시작으로 등록되고, alter-recovery가 웹/모델 준비, 등록된 외장 드라이브 UUID, SMB 경로, 공개 HTTPS, 저장된 SmartThings 인증을 확인합니다. 재실행은 이미 실행 중인 서비스를 재시작하지 않습니다. 정상 부팅 후 클릭은 별도 관리자 인증 없이 점검·대시보드 열기를 수행합니다. 관리자가 서비스를 완전히 중지한 경우에는 Pi 계정 암호를 요청할 수 있습니다. 삼성에서 권한을 철회했거나 refresh token이 만료·손상된 경우 삼성 계정 재로그인은 필요합니다.
 
 기존 설치에 적용: `bash scripts/install-startup.sh`. 결과는 private `data/startup-status.json`, 부팅 로그는 `journalctl -u alter-recovery -b`에서 확인합니다. 전원 손실로 파일시스템·SD카드·DB가 손상된 경우 자동 초기화하지 않으며 백업 복구가 필요합니다.
