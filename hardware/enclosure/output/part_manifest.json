@@ -1,0 +1,240 @@
+[
+  {
+    "watertight": true,
+    "winding_consistent": true,
+    "positive_volume": true,
+    "components": 1,
+    "bounds_mm": [
+      208.0,
+      166.0,
+      54.0
+    ],
+    "volume_cm3": 188.715,
+    "triangles": 14844,
+    "name": "01_front_shell",
+    "cad_valid": true,
+    "quantity": 1,
+    "fits_220_bed": true
+  },
+  {
+    "watertight": true,
+    "winding_consistent": true,
+    "positive_volume": true,
+    "components": 1,
+    "bounds_mm": [
+      208.0,
+      166.0,
+      14.5
+    ],
+    "volume_cm3": 103.727,
+    "triangles": 23064,
+    "name": "02_rear_cover",
+    "cad_valid": true,
+    "quantity": 1,
+    "fits_220_bed": true
+  },
+  {
+    "watertight": true,
+    "winding_consistent": true,
+    "positive_volume": true,
+    "components": 1,
+    "bounds_mm": [
+      48.0,
+      48.0,
+      3.0
+    ],
+    "volume_cm3": 4.688,
+    "triangles": 4388,
+    "name": "03_fan_bracket",
+    "cad_valid": true,
+    "quantity": 1,
+    "fits_220_bed": true
+  },
+  {
+    "watertight": true,
+    "winding_consistent": true,
+    "positive_volume": true,
+    "components": 1,
+    "bounds_mm": [
+      35.2,
+      9.0,
+      2.4
+    ],
+    "volume_cm3": 0.707,
+    "triangles": 1304,
+    "name": "04_display_clip_1",
+    "cad_valid": true,
+    "quantity": 1,
+    "fits_220_bed": true
+  },
+  {
+    "watertight": true,
+    "winding_consistent": true,
+    "positive_volume": true,
+    "components": 1,
+    "bounds_mm": [
+      35.2,
+      9.0,
+      2.4
+    ],
+    "volume_cm3": 0.707,
+    "triangles": 1304,
+    "name": "04_display_clip_2",
+    "cad_valid": true,
+    "quantity": 1,
+    "fits_220_bed": true
+  },
+  {
+    "watertight": true,
+    "winding_consistent": true,
+    "positive_volume": true,
+    "components": 1,
+    "bounds_mm": [
+      35.2,
+      9.0,
+      2.4
+    ],
+    "volume_cm3": 0.707,
+    "triangles": 1304,
+    "name": "04_display_clip_3",
+    "cad_valid": true,
+    "quantity": 1,
+    "fits_220_bed": true
+  },
+  {
+    "watertight": true,
+    "winding_consistent": true,
+    "positive_volume": true,
+    "components": 1,
+    "bounds_mm": [
+      35.2,
+      9.0,
+      2.4
+    ],
+    "volume_cm3": 0.707,
+    "triangles": 1304,
+    "name": "04_display_clip_4",
+    "cad_valid": true,
+    "quantity": 1,
+    "fits_220_bed": true
+  },
+  {
+    "watertight": true,
+    "winding_consistent": true,
+    "positive_volume": true,
+    "components": 1,
+    "bounds_mm": [
+      94.0,
+      170.0,
+      18.0
+    ],
+    "volume_cm3": 67.929,
+    "triangles": 2970,
+    "name": "05_stand_left",
+    "cad_valid": true,
+    "quantity": 1,
+    "fits_220_bed": true
+  },
+  {
+    "watertight": true,
+    "winding_consistent": true,
+    "positive_volume": true,
+    "components": 1,
+    "bounds_mm": [
+      94.0,
+      170.0,
+      18.0
+    ],
+    "volume_cm3": 67.929,
+    "triangles": 2970,
+    "name": "06_stand_right",
+    "cad_valid": true,
+    "quantity": 1,
+    "fits_220_bed": true
+  },
+  {
+    "watertight": true,
+    "winding_consistent": true,
+    "positive_volume": true,
+    "components": 1,
+    "bounds_mm": [
+      106.0,
+      67.0,
+      9.0
+    ],
+    "volume_cm3": 11.142,
+    "triangles": 5706,
+    "name": "09_pi_offset_tray",
+    "cad_valid": true,
+    "quantity": 1,
+    "fits_220_bed": true
+  },
+  {
+    "watertight": true,
+    "winding_consistent": true,
+    "positive_volume": true,
+    "components": 1,
+    "bounds_mm": [
+      84.0,
+      8.0,
+      4.0
+    ],
+    "volume_cm3": 2.089,
+    "triangles": 3020,
+    "name": "10_cable_gate_upper",
+    "cad_valid": true,
+    "quantity": 1,
+    "fits_220_bed": true
+  },
+  {
+    "watertight": true,
+    "winding_consistent": true,
+    "positive_volume": true,
+    "components": 1,
+    "bounds_mm": [
+      84.0,
+      8.0,
+      4.0
+    ],
+    "volume_cm3": 2.089,
+    "triangles": 3020,
+    "name": "11_cable_gate_lower",
+    "cad_valid": true,
+    "quantity": 1,
+    "fits_220_bed": true
+  },
+  {
+    "watertight": true,
+    "winding_consistent": true,
+    "positive_volume": true,
+    "components": 1,
+    "bounds_mm": [
+      44.0,
+      36.0,
+      8.0
+    ],
+    "volume_cm3": 5.716,
+    "triangles": 356,
+    "name": "07_display_fit_coupon",
+    "cad_valid": true,
+    "quantity": 1,
+    "fits_220_bed": true
+  },
+  {
+    "watertight": true,
+    "winding_consistent": true,
+    "positive_volume": true,
+    "components": 1,
+    "bounds_mm": [
+      54.0,
+      23.0,
+      8.0
+    ],
+    "volume_cm3": 9.353,
+    "triangles": 3816,
+    "name": "08_fastener_fit_coupon",
+    "cad_valid": true,
+    "quantity": 1,
+    "fits_220_bed": true
+  }
+]

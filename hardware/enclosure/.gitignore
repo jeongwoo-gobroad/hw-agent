@@ -1,0 +1,7 @@
+.venv/
+reference/*.step
+reference/*.zip
+reference/*.pdf
+reference/*.brep
+reference/*.png
+output/*.glb

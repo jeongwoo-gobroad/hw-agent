@@ -5,11 +5,11 @@ Wants=network-online.target alter.service
 StartLimitIntervalSec=0
 
 [Service]
-User=pi
-Group=pi
-WorkingDirectory=/home/pi/hw-agent
-EnvironmentFile=/home/pi/hw-agent/.env
-ExecStart=/usr/local/bin/ngrok http http://127.0.0.1:8080 --inspect=false --log=stdout --log-format=json
+User=@USER@
+Group=@GROUP@
+WorkingDirectory=@ROOT@
+EnvironmentFile=@ROOT@/.env
+ExecStart=@NGROK@ http http://127.0.0.1:8080 --inspect=false --log=stdout --log-format=json
 Restart=on-failure
 RestartSec=30
 UMask=0077

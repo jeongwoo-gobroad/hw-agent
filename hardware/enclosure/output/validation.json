@@ -1,0 +1,485 @@
+{
+  "revision": "1.1",
+  "printable_pair_checks": [
+    {
+      "a": "01_front_shell",
+      "b": "02_rear_cover",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "01_front_shell",
+      "b": "03_fan_bracket",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "01_front_shell",
+      "b": "04_display_clip_1",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "01_front_shell",
+      "b": "04_display_clip_2",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "01_front_shell",
+      "b": "04_display_clip_3",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "01_front_shell",
+      "b": "04_display_clip_4",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "01_front_shell",
+      "b": "05_stand_left",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "01_front_shell",
+      "b": "06_stand_right",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "01_front_shell",
+      "b": "09_pi_offset_tray",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "01_front_shell",
+      "b": "10_cable_gate_upper",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "01_front_shell",
+      "b": "11_cable_gate_lower",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "02_rear_cover",
+      "b": "03_fan_bracket",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "02_rear_cover",
+      "b": "04_display_clip_1",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "02_rear_cover",
+      "b": "04_display_clip_2",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "02_rear_cover",
+      "b": "04_display_clip_3",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "02_rear_cover",
+      "b": "04_display_clip_4",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "02_rear_cover",
+      "b": "05_stand_left",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "02_rear_cover",
+      "b": "06_stand_right",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "02_rear_cover",
+      "b": "09_pi_offset_tray",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "02_rear_cover",
+      "b": "10_cable_gate_upper",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "02_rear_cover",
+      "b": "11_cable_gate_lower",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "03_fan_bracket",
+      "b": "04_display_clip_1",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "03_fan_bracket",
+      "b": "04_display_clip_2",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "03_fan_bracket",
+      "b": "04_display_clip_3",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "03_fan_bracket",
+      "b": "04_display_clip_4",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "03_fan_bracket",
+      "b": "05_stand_left",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "03_fan_bracket",
+      "b": "06_stand_right",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "03_fan_bracket",
+      "b": "09_pi_offset_tray",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "03_fan_bracket",
+      "b": "10_cable_gate_upper",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "03_fan_bracket",
+      "b": "11_cable_gate_lower",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_1",
+      "b": "04_display_clip_2",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_1",
+      "b": "04_display_clip_3",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_1",
+      "b": "04_display_clip_4",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_1",
+      "b": "05_stand_left",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_1",
+      "b": "06_stand_right",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_1",
+      "b": "09_pi_offset_tray",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_1",
+      "b": "10_cable_gate_upper",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_1",
+      "b": "11_cable_gate_lower",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_2",
+      "b": "04_display_clip_3",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_2",
+      "b": "04_display_clip_4",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_2",
+      "b": "05_stand_left",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_2",
+      "b": "06_stand_right",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_2",
+      "b": "09_pi_offset_tray",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_2",
+      "b": "10_cable_gate_upper",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_2",
+      "b": "11_cable_gate_lower",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_3",
+      "b": "04_display_clip_4",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_3",
+      "b": "05_stand_left",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_3",
+      "b": "06_stand_right",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_3",
+      "b": "09_pi_offset_tray",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_3",
+      "b": "10_cable_gate_upper",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_3",
+      "b": "11_cable_gate_lower",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_4",
+      "b": "05_stand_left",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_4",
+      "b": "06_stand_right",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_4",
+      "b": "09_pi_offset_tray",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_4",
+      "b": "10_cable_gate_upper",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "04_display_clip_4",
+      "b": "11_cable_gate_lower",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "05_stand_left",
+      "b": "06_stand_right",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "05_stand_left",
+      "b": "09_pi_offset_tray",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "05_stand_left",
+      "b": "10_cable_gate_upper",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "05_stand_left",
+      "b": "11_cable_gate_lower",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "06_stand_right",
+      "b": "09_pi_offset_tray",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "06_stand_right",
+      "b": "10_cable_gate_upper",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "06_stand_right",
+      "b": "11_cable_gate_lower",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "09_pi_offset_tray",
+      "b": "10_cable_gate_upper",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "09_pi_offset_tray",
+      "b": "11_cable_gate_lower",
+      "overlap_mm3": 0
+    },
+    {
+      "a": "10_cable_gate_upper",
+      "b": "11_cable_gate_lower",
+      "overlap_mm3": 0
+    }
+  ],
+  "reference_checks": [
+    {
+      "part": "01_front_shell",
+      "reference": "camera3",
+      "overlap_mm3": 0.001569
+    },
+    {
+      "part": "01_front_shell",
+      "reference": "display",
+      "overlap_mm3": 0
+    },
+    {
+      "part": "04_display_clip_1",
+      "reference": "display",
+      "overlap_mm3": 0
+    },
+    {
+      "part": "04_display_clip_2",
+      "reference": "display",
+      "overlap_mm3": 0
+    },
+    {
+      "part": "04_display_clip_3",
+      "reference": "display",
+      "overlap_mm3": 0
+    },
+    {
+      "part": "04_display_clip_4",
+      "reference": "display",
+      "overlap_mm3": 0
+    },
+    {
+      "part": "09_pi_offset_tray",
+      "reference": "display",
+      "overlap_mm3": 0
+    },
+    {
+      "part": "09_pi_offset_tray",
+      "reference": "pi5",
+      "overlap_mm3": 0
+    },
+    {
+      "part": "03_fan_bracket",
+      "reference": "pi5",
+      "overlap_mm3": 0
+    },
+    {
+      "part": "02_rear_cover",
+      "reference": "pi5",
+      "overlap_mm3": 0
+    }
+  ],
+  "fan_envelope_checks": [
+    {
+      "target": "01_front_shell",
+      "overlap_mm3": 0
+    },
+    {
+      "target": "02_rear_cover",
+      "overlap_mm3": 0
+    },
+    {
+      "target": "03_fan_bracket",
+      "overlap_mm3": 0
+    },
+    {
+      "target": "04_display_clip_1",
+      "overlap_mm3": 0
+    },
+    {
+      "target": "04_display_clip_2",
+      "overlap_mm3": 0
+    },
+    {
+      "target": "04_display_clip_3",
+      "overlap_mm3": 0
+    },
+    {
+      "target": "04_display_clip_4",
+      "overlap_mm3": 0
+    },
+    {
+      "target": "05_stand_left",
+      "overlap_mm3": 0
+    },
+    {
+      "target": "06_stand_right",
+      "overlap_mm3": 0
+    },
+    {
+      "target": "09_pi_offset_tray",
+      "overlap_mm3": 0
+    },
+    {
+      "target": "10_cable_gate_upper",
+      "overlap_mm3": 0
+    },
+    {
+      "target": "11_cable_gate_lower",
+      "overlap_mm3": 0
+    },
+    {
+      "target": "display",
+      "overlap_mm3": 0
+    },
+    {
+      "target": "pi5",
+      "overlap_mm3": 0
+    },
+    {
+      "target": "camera3",
+      "overlap_mm3": 0
+    },
+    {
+      "target": "case_heatsink_envelope",
+      "overlap_mm3": 0
+    }
+  ],
+  "fan_envelope_intersections": [],
+  "fan_design_envelope_mm": [
+    30.5,
+    30.5,
+    8.0
+  ],
+  "fan_source": "reference/fan_sources.json",
+  "reference_checks_performed": true,
+  "intersections": [],
+  "reference_intersections": [],
+  "assembled_bounds_mm": [
+    208.0,
+    170.0,
+    186.45
+  ],
+  "pi_connector_top_z": 44.656,
+  "fan_lower_z": 38.0,
+  "fan_to_heatsink_min_gap_mm": 3.216,
+  "usb_ethernet_to_inner_wall_mm": 66.86,
+  "bottom_connectors_to_inner_wall_mm": 46.57,
+  "rear_cable_exit_mm": [
+    72,
+    16
+  ],
+  "physical_fit_tested": false,
+  "thermal_tested": false,
+  "slicer_tested": false,
+  "limitations": [
+    "Fan identification is supported by owner reports; geometry uses the current manufacturer CC3007 family drawing, not a Pi OEM revision-specific drawing.",
+    "STEP models are manufacturer reference data, not production tolerances.",
+    "Flexible cables, connector boots, threads and printer shrinkage require a real assembly test."
+  ]
+}

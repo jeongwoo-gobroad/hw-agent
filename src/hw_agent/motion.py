@@ -1,4 +1,5 @@
 """Shared MediaPipe models and debounced, bounded Flow dispatch."""
+from .i18n import gettext as translate
 import json
 import threading
 import time
@@ -95,17 +96,17 @@ class Motion:
             hold, release, interval = rule.get("hold_seconds", 1.0), rule.get("release_seconds", 1.5), rule.get("repeat_seconds", 5.0)
             repeat = rule.get("repeat", False)
             if not isinstance(repeat, bool) or not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in (hold, release, interval)):
-                raise HTTPException(400, "감지 시간과 반복 설정을 확인하세요.")
+                raise HTTPException(400, translate('감지 시간과 반복 설정을 확인하세요.'))
             if not (.3 <= hold <= 60 and .3 <= release <= 60 and 3 <= interval <= 3600):
-                raise HTTPException(400, "유지·재감지 시간은 0.3~60초, 실행 간격은 3~3600초입니다.")
+                raise HTTPException(400, translate('유지·재감지 시간은 0.3~60초, 실행 간격은 3~3600초입니다.'))
             normalized[key] = {"hold_seconds": hold, "release_seconds": release, "repeat_seconds": interval, "repeat": repeat}
         if set(rules) - set(LABELS):
-            raise HTTPException(400, "잘못된 감지 항목입니다.")
+            raise HTTPException(400, translate('잘못된 감지 항목입니다.'))
         for key, value in mappings.items():
             if key not in LABELS or not isinstance(value, str):
-                raise HTTPException(400, "잘못된 감지 항목입니다.")
+                raise HTTPException(400, translate('잘못된 감지 항목입니다.'))
             if enabled and value and not db.rows("SELECT id FROM flows WHERE id=?", (value,)):
-                raise HTTPException(400, "존재하는 Flow를 선택하세요.")
+                raise HTTPException(400, translate('존재하는 Flow를 선택하세요.'))
         if enabled:
             try:
                 self.load()

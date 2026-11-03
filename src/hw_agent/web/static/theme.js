@@ -7,8 +7,8 @@
     document.documentElement.dataset.theme = theme;
     const toggle = document.querySelector("#theme-toggle");
     if (toggle) {
-      toggle.textContent = theme === "dark" ? "라이트 모드" : "다크 모드";
-      toggle.setAttribute("aria-label", toggle.textContent + "로 전환");
+      toggle.textContent = theme === "dark" ? tr("라이트 모드") : tr("다크 모드");
+      toggle.setAttribute("aria-label", toggle.textContent + tr("로 전환"));
       toggle.setAttribute("aria-pressed", String(theme === "dark"));
     }
   }

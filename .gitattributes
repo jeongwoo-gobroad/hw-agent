@@ -1,3 +1,8 @@
 * text=auto eol=lf
 *.png binary
 *.jpg binary
+
+# Preserve generated CAD exports byte-for-byte.
+*.step -text -diff
+*.stl -text -diff
+*.mo -text -diff

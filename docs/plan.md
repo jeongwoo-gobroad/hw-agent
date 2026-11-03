@@ -1,13 +1,11 @@
-# 남은 구현·검증
+# Roadmap / 개발 방향
 
-기본 웹/저장장치/검색/미리보기/로컬 모델/카메라/OAuth/Flow 구현과 실기기 시험을 수행했습니다. 현재 결과는 acceptance.md가 기준입니다.
+Current behavior and verification limits are documented in [acceptance.md](acceptance.md). The following items are future work, not promises of available features.
 
-- ngrok 무료 고정 HTTPS 콜백 전환 완료. 장기 사용량/재부팅 운용 관찰 필요.
-- 다섯 실제 손동작의 사용자 환경 정확도/오탐/Flow 연결 검증.
-- Pi 디스플레이 터치 조작과 장시간 kiosk 운용 검증.
-- USB/GPIO 마이크 연결 후 한국어 호출어 ‘얼터’와 STT 구현·측정.
-- 장기 대화 요약 기억, 검색 root 자연어 지정과 추가 날짜 표현.
-- 대규모 코퍼스/손상 미디어/전원 장애/장시간 동시 부하 시험.
-- HWP/PDF 표·레이아웃 및 스캔 문서 OCR 확장.
+- Broader recognition tests across lighting, faces, gestures and microphone environments.
+- Long-running recovery and storage tests across hardware and file systems.
+- Conversation summarization and more natural-language date/folder expressions.
+- OCR for scanned documents and richer table/layout extraction.
+- Fresh-OS installation checks and reproducible performance comparisons.
 
-미완료 항목을 현재 제공 기능으로 표기하지 않습니다.
+현재 구현과 검증 범위는 위 문서를 따릅니다. 향후에는 조명·손동작·음성 환경별 인식 평가, 다양한 저장장치의 장기 복구 시험, 대화 요약, 검색 조건 확장, 스캔 문서 OCR과 설치 재현성 검증을 진행합니다.

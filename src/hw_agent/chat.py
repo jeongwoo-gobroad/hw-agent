@@ -1,3 +1,4 @@
+from .i18n import gettext as translate
 from datetime import date as calendar_date, timedelta
 import json
 import re
@@ -8,6 +9,7 @@ import httpx
 from fastapi import HTTPException
 from . import db, indexing, smartthings, generation
 from . import photo_search
+from .i18n import language
 from .config import LLM_URL, LLM_HEADERS
 
 generation_lock = threading.Lock()
@@ -20,14 +22,14 @@ def explicit_filters(message, plan):
     if match:
         plan["ext"] = match.group(1).lower()
     today = calendar_date.today()
-    if "지난달" in message or "지난 달" in message:
+    if "지난달" in message or "지난 달" in message or "last month" in message.lower():
         end = today.replace(day=1) - timedelta(days=1)
         plan.update(after=end.replace(day=1).isoformat(), before=end.isoformat())
-    elif "이번달" in message or "이번 달" in message:
+    elif "이번달" in message or "이번 달" in message or "this month" in message.lower():
         plan.update(after=today.replace(day=1).isoformat(), before=today.isoformat())
-    elif "어제" in message:
+    elif "어제" in message or "yesterday" in message.lower():
         value=(today-timedelta(days=1)).isoformat(); plan.update(after=value,before=value)
-    elif "오늘" in message:
+    elif "오늘" in message or "today" in message.lower():
         plan.update(after=today.isoformat(),before=today.isoformat())
     return plan
 
@@ -41,9 +43,9 @@ def create(title="새 대화"):
 
 def respond(session_id, message, on_delta=None, cancelled=None):
     if not db.rows("SELECT id FROM sessions WHERE id=?", (session_id,)):
-        raise HTTPException(404, "대화를 찾을 수 없습니다.")
+        raise HTTPException(404, translate('대화를 찾을 수 없습니다.'))
     if not generation_lock.acquire(blocking=False):
-        raise HTTPException(429, "다른 답변을 생성 중입니다.")
+        raise HTTPException(429, translate('다른 답변을 생성 중입니다.'))
     try:
         history = db.rows("SELECT role,content FROM messages WHERE session=? ORDER BY id DESC LIMIT 8", (session_id,))[::-1]
         for item in history:
@@ -56,6 +58,7 @@ def respond(session_id, message, on_delta=None, cancelled=None):
         query, mode = message, "keyword"
         plan = {}
         available = False
+        device_options = []
         try:
             available = httpx.get(LLM_URL + "/health", headers=LLM_HEADERS, timeout=2).is_success
         except httpx.HTTPError:
@@ -81,6 +84,9 @@ def respond(session_id, message, on_delta=None, cancelled=None):
                       '등록 Flow: ' + json.dumps(flow_options, ensure_ascii=False) +
                       '. 등록 기기: ' + json.dumps(device_options, ensure_ascii=False) +
                       '. 현재 날짜: ' + time.strftime("%Y-%m-%d"))
+            if language.get() == "en":
+                prompt = prompt.replace('한국어 개인 도우미', '영어와 한국어 개인 도우미').replace('한국어 답변', 'English answer')
+                prompt += ' Respond in English in the answer field. Keep filenames and person names unchanged.'
             try:
                 payload = {
                     "model": "local", "messages": [{"role": "system", "content": prompt}] +
@@ -119,28 +125,28 @@ def respond(session_id, message, on_delta=None, cancelled=None):
             plan = explicit_filters(message, plan)
         matches = indexing.search(query, ext=str(plan.get("ext") or "")[:20],
                                   after=date(plan.get("after")), before=date(plan.get("before"), True)) if intent == "search" else []
-        answer = {"text": f"‘{query}’ 검색 결과 {len(matches)}개를 찾았습니다." if matches else
-                  f"‘{query}’에 해당하는 색인 결과가 없습니다. 검색어나 대상 폴더를 확인하세요.",
+        answer = {"text": translate("‘%(query)s’ 검색 결과 %(count)s개를 찾았습니다.") % {"query":query,"count":len(matches)} if matches else
+                  translate("‘%(query)s’에 해당하는 색인 결과가 없습니다. 검색어나 대상 폴더를 확인하세요.") % {"query":query},
                   "query": query, "mode": mode, "filters": plan, "files": matches[:8]}
         if intent == 'photo_search':
             answer.update(photo_search.search(message,plan))
             answer['files'] = []
         elif intent == "chat":
-            answer["text"] = str(plan.get("answer") or "무엇을 도와드릴까요?")[:4000]
+            answer["text"] = str(plan.get("answer") or translate("무엇을 도와드릴까요?"))[:4000]
         elif intent == "flow":
             candidate = next((f for f in db.rows("SELECT id,name FROM flows") if f["id"] == plan.get("flow_id")), None)
-            answer["text"] = "실행할 Flow를 확인해 주세요." if candidate else "일치하는 Flow를 찾지 못했습니다."
+            answer["text"] = translate("실행할 Flow를 확인해 주세요.") if candidate else translate("일치하는 Flow를 찾지 못했습니다.")
             answer["proposed_flow"] = candidate
         elif intent == "device":
             candidate = next((d for d in device_options if d["id"] == plan.get("device_id")), None)
             command = plan.get("command")
             if candidate and command in {"on", "off"}:
-                answer["text"] = candidate["name"] + (" 켜기" if command == "on" else " 끄기") + "를 확인해 주세요."
+                answer["text"] = translate("%(name)s: %(command)s 명령을 확인해 주세요.") % {"name":candidate["name"],"command":translate("켜기" if command == "on" else "끄기")}
                 answer["proposed_command"] = {"device_id": candidate["id"], "capability": "switch", "command": command}
             else:
-                answer["text"] = "연결된 기기 또는 실행할 동작을 확인할 수 없습니다."
+                answer["text"] = translate("연결된 기기 또는 실행할 동작을 확인할 수 없습니다.")
         if cancelled is not None and cancelled.is_set():
-            raise HTTPException(499, "응답 생성을 중단했습니다.")
+            raise HTTPException(499, translate('응답 생성을 중단했습니다.'))
         with db.connect() as conn:
             conn.execute("INSERT INTO messages(session,role,content,created) VALUES(?,?,?,?)",
                          (session_id, "user", message, time.time()))

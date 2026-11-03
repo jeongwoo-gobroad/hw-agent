@@ -41,7 +41,7 @@ try:
         os.chmod(target, 0o755)
         options = "nosuid,nodev"
         if device["fstype"] in {"vfat", "exfat", "ntfs"}:
-            options += ",uid=1000,gid=1000"
+            options += ",uid=@UID@,gid=@GID@"
         if device["fstype"] == "vfat":
             options += ",utf8=1"
         args = ["/usr/bin/mount"]

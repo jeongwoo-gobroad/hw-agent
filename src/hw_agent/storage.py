@@ -1,3 +1,4 @@
+from .i18n import gettext as translate
 import json
 import os
 from pathlib import Path
@@ -35,7 +36,7 @@ def devices():
 def device_for_uuid(identifier, listing=None):
     matches = [d for d in (devices() if listing is None else listing) if d["uuid"] == identifier]
     if len(matches) > 1:
-        raise HTTPException(409, "동일한 파일시스템 UUID의 장치가 여러 개입니다. 복제 드라이브를 분리하세요.")
+        raise HTTPException(409, translate('동일한 파일시스템 UUID의 장치가 여러 개입니다. 복제 드라이브를 분리하세요.'))
     return matches[0] if matches else None
 
 
@@ -45,7 +46,7 @@ def excluded(path):
 
 def check_path(path):
     if excluded(path):
-        raise HTTPException(403, "접근 제외 경로입니다.")
+        raise HTTPException(403, translate('접근 제외 경로입니다.'))
 
 
 def external_path(path):
@@ -57,15 +58,15 @@ def external_path(path):
         if device["mount"] and p.is_relative_to(Path(device["mount"]).resolve()):
             device_for_uuid(device["uuid"], listing)
             if any(part.startswith(".") for part in p.relative_to(device["mount"]).parts):
-                raise HTTPException(403, "숨김 폴더는 등록할 수 없습니다.")
+                raise HTTPException(403, translate('숨김 폴더는 등록할 수 없습니다.'))
             return p, device
-    raise HTTPException(403, "연결된 외장 드라이브 내부 폴더를 선택하세요.")
+    raise HTTPException(403, translate('연결된 외장 드라이브 내부 폴더를 선택하세요.'))
 
 
 def add_root(path):
     p, device = external_path(path)
     if not p.is_dir():
-        raise HTTPException(400, "폴더를 선택하세요.")
+        raise HTTPException(400, translate('폴더를 선택하세요.'))
     relative = str(p.relative_to(Path(device["mount"]).resolve()))
     with db.connect() as conn:
         conn.execute("""INSERT INTO roots(path,uuid,mount,label,relative_path) VALUES(?,?,?,?,?)
@@ -83,31 +84,31 @@ def root_path(root):
         try:
             p = (Path(device["mount"]) / relative).resolve(strict=True)
         except OSError:
-            raise HTTPException(409, "등록된 폴더가 현재 드라이브에 없습니다.")
+            raise HTTPException(409, translate('등록된 폴더가 현재 드라이브에 없습니다.'))
         if p.is_relative_to(Path(device["mount"]).resolve()) and p.is_dir():
             if root["mount"] != device["mount"] or not root.get("relative_path"):
                 with db.connect() as conn:
                     conn.execute("UPDATE roots SET path=?,mount=?,relative_path=? WHERE id=?",
                                  (str(p),device["mount"],str(relative),root["id"]))
             return p
-    raise HTTPException(409, "외장 드라이브 또는 폴더가 연결되지 않았습니다.")
+    raise HTTPException(409, translate('외장 드라이브 또는 폴더가 연결되지 않았습니다.'))
 
 
 def safe_file(file_id):
     records = db.rows("SELECT * FROM files WHERE id=?", (file_id,))
     if not records:
-        raise HTTPException(404, "파일을 찾을 수 없습니다.")
+        raise HTTPException(404, translate('파일을 찾을 수 없습니다.'))
     record = records[0]
     roots = db.rows("SELECT * FROM roots WHERE id=?", (record["root"],))
     if not roots:
-        raise HTTPException(403, "등록이 해제된 폴더입니다.")
+        raise HTTPException(403, translate('등록이 해제된 폴더입니다.'))
     base = root_path(roots[0])
     candidate = base / record["path"].split("\n", 1)[1]
     check_path(candidate)
     p = candidate.resolve(strict=True)
     check_path(p)
     if not p.is_relative_to(base) or not p.is_file():
-        raise HTTPException(403, "허용 폴더 밖의 파일입니다.")
+        raise HTTPException(403, translate('허용 폴더 밖의 파일입니다.'))
     return p, record
 
 
@@ -120,7 +121,7 @@ def folders(path):
 
 def smb(action, path, name, readonly=True):
     if action not in {"set", "remove"}:
-        raise HTTPException(400, "지원하지 않는 공유 작업입니다.")
+        raise HTTPException(400, translate('지원하지 않는 공유 작업입니다.'))
     p, device = external_path(path) if action == "set" else (None, None)
     payload = json.dumps({"action": action, "path": str(p) if p else "", "name": name, "readonly": readonly})
     result = subprocess.run(["sudo", "-n", "/usr/local/sbin/alter-smb"], input=payload,

@@ -1,4 +1,5 @@
 """SmartThings authorization code flow and encrypted, rotating token storage."""
+from .i18n import gettext as translate
 from contextlib import contextmanager
 import base64
 import fcntl
@@ -18,7 +19,7 @@ OAUTH_BASE = os.getenv("SMARTTHINGS_OAUTH_BASE", "https://api.smartthings.com/oa
 CLIENT_ID = os.getenv("SMARTTHINGS_CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("SMARTTHINGS_CLIENT_SECRET", "")
 REDIRECT_URI = os.getenv("SMARTTHINGS_REDIRECT_URI", "")
-RETURN_URL = os.getenv("DASHBOARD_URL", "http://127.0.0.1:8080")
+RETURN_URL = os.getenv("DASHBOARD_URL", "http://localhost:11977")
 CIPHER = Fernet(base64.urlsafe_b64encode(hashlib.sha256(
     b"alter-smartthings-token-v1\0" + config.SECRET.encode()).digest()))
 
@@ -52,7 +53,7 @@ def load_tokens():
     try:
         return json.loads(CIPHER.decrypt(value.encode()))
     except (InvalidToken, ValueError):
-        raise HTTPException(409, "저장된 SmartThings 인증을 읽을 수 없습니다. 다시 연결하세요.")
+        raise HTTPException(409, translate('저장된 SmartThings 인증을 읽을 수 없습니다. 다시 연결하세요.'))
 
 
 def save_tokens(value):
@@ -68,7 +69,7 @@ def save_tokens(value):
 
 def client():
     if not CLIENT_ID or not CLIENT_SECRET:
-        raise HTTPException(409, "SmartThings OAuth 앱 등록이 필요합니다.")
+        raise HTTPException(409, translate('SmartThings OAuth 앱 등록이 필요합니다.'))
     return OAuth2Client(CLIENT_ID, CLIENT_SECRET, scope=SCOPES,
                         redirect_uri=REDIRECT_URI, token_endpoint_auth_method="client_secret_basic", timeout=20)
 
@@ -76,7 +77,7 @@ def client():
 def validate_config():
     parsed = urlparse(REDIRECT_URI)
     if not CLIENT_ID or not CLIENT_SECRET or parsed.scheme != "https" or parsed.path != "/oauth/callback":
-        raise HTTPException(409, "OAuth 클라이언트와 HTTPS 콜백 주소를 먼저 등록하세요.")
+        raise HTTPException(409, translate('OAuth 클라이언트와 HTTPS 콜백 주소를 먼저 등록하세요.'))
     return parsed
 
 
@@ -111,13 +112,13 @@ def valid_session(row):
 def start(ticket):
     rows = db.rows("SELECT * FROM oauth_states WHERE ticket=?", (digest(ticket),))
     if not rows or rows[0]["phase"]!="created" or rows[0]["expires"]<time.time() or not valid_session(rows[0]):
-        raise HTTPException(400, "로그인 연결이 만료되었습니다. 대시보드에서 다시 시작하세요.")
+        raise HTTPException(400, translate('로그인 연결이 만료되었습니다. 대시보드에서 다시 시작하세요.'))
     state, binding = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
     with db.connect() as conn:
         updated = conn.execute("UPDATE oauth_states SET state=?,binding=?,phase='started' WHERE ticket=? AND phase='created'",
                                (digest(state),digest(binding),digest(ticket)))
         if updated.rowcount != 1:
-            raise HTTPException(400, "이미 사용한 로그인 연결입니다.")
+            raise HTTPException(400, translate('이미 사용한 로그인 연결입니다.'))
     with client() as oauth_client:
         url, _ = oauth_client.create_authorization_url(OAUTH_BASE+"/authorize",state=state)
     return url, binding
@@ -128,15 +129,15 @@ def finish(state, binding, code=None, error=None):
         row = conn.execute("SELECT * FROM oauth_states WHERE state=?", (digest(state),)).fetchone()
         if (not row or row["phase"]!="started" or row["expires"]<time.time()
                 or not secrets.compare_digest(row["binding"],digest(binding)) or not valid_session(row)):
-            raise HTTPException(400, "OAuth 상태 검증 실패. 대시보드에서 다시 연결하세요.")
+            raise HTTPException(400, translate('OAuth 상태 검증 실패. 대시보드에서 다시 연결하세요.'))
         updated=conn.execute("UPDATE oauth_states SET phase='consumed' WHERE ticket=? AND phase='started'", (row["ticket"],))
         if updated.rowcount != 1:
-            raise HTTPException(400,"이미 사용한 OAuth 상태입니다.")
+            raise HTTPException(400,translate('이미 사용한 OAuth 상태입니다.'))
     if error:
         db.set_state("st_oauth_error", "authorization_denied")
         return False
     if not code:
-        raise HTTPException(400, "인가 코드가 없습니다.")
+        raise HTTPException(400, translate('인가 코드가 없습니다.'))
     try:
         with token_lock(), client() as oauth_client:
             tokens = oauth_client.fetch_token(OAUTH_BASE+"/token",code=code,
@@ -146,7 +147,7 @@ def finish(state, binding, code=None, error=None):
         raise
     except Exception:
         db.set_state("st_oauth_error","token_exchange_failed")
-        raise HTTPException(502,"SmartThings 토큰 교환에 실패했습니다. 다시 연결하세요.")
+        raise HTTPException(502,translate('SmartThings 토큰 교환에 실패했습니다. 다시 연결하세요.'))
     return True
 
 
@@ -154,7 +155,7 @@ def access_token():
     with token_lock():
         tokens = load_tokens()
         if not tokens:
-            raise HTTPException(409,"SmartThings 연결이 필요합니다.")
+            raise HTTPException(409,translate('SmartThings 연결이 필요합니다.'))
         if float(tokens.get("expires_at",0)) > time.time()+300:
             return tokens["access_token"]
         try:
@@ -168,7 +169,7 @@ def access_token():
                 return refreshed["access_token"]
         except Exception:
             db.set_state("st_oauth_error","refresh_failed")
-            raise HTTPException(409,"SmartThings 인증 갱신에 실패했습니다. 다시 연결하세요.")
+            raise HTTPException(409,translate('SmartThings 인증 갱신에 실패했습니다. 다시 연결하세요.'))
 
 
 def invalidate_access():

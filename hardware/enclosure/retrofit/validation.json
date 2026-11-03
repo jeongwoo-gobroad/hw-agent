@@ -1,0 +1,131 @@
+{
+  "source": "v1.1 parameters and official reference CAD",
+  "head_envelope": {
+    "diameter": 6.3,
+    "height": 3
+  },
+  "nut": {
+    "across_flats": 5.5,
+    "height": 2.4
+  },
+  "washer": {
+    "inner": 3.2,
+    "outer": 7,
+    "thickness": 0.5
+  },
+  "fasteners": [
+    {
+      "group": "A_stand",
+      "index": 1,
+      "x": -77.0,
+      "y": -10.0,
+      "length_mm": 20,
+      "nut_side": "inside",
+      "screw_tip_z": 45,
+      "washer": true,
+      "clashes": {}
+    },
+    {
+      "group": "A_stand",
+      "index": 2,
+      "x": 77.0,
+      "y": -10.0,
+      "length_mm": 20,
+      "nut_side": "inside",
+      "screw_tip_z": 45,
+      "washer": true,
+      "clashes": {}
+    },
+    {
+      "group": "B_gate",
+      "index": 1,
+      "x": -39,
+      "y": -69,
+      "length_mm": 16,
+      "nut_side": "inside",
+      "screw_tip_z": 45,
+      "washer": false,
+      "clashes": {}
+    },
+    {
+      "group": "B_gate",
+      "index": 2,
+      "x": -39,
+      "y": -75.5,
+      "length_mm": 16,
+      "nut_side": "inside",
+      "screw_tip_z": 45,
+      "washer": false,
+      "clashes": {}
+    },
+    {
+      "group": "B_gate",
+      "index": 3,
+      "x": 39,
+      "y": -69,
+      "length_mm": 16,
+      "nut_side": "inside",
+      "screw_tip_z": 45,
+      "washer": false,
+      "clashes": {}
+    },
+    {
+      "group": "B_gate",
+      "index": 4,
+      "x": 39,
+      "y": -75.5,
+      "length_mm": 16,
+      "nut_side": "inside",
+      "screw_tip_z": 45,
+      "washer": false,
+      "clashes": {}
+    },
+    {
+      "group": "C_fan",
+      "index": 1,
+      "x": -40.56,
+      "y": -29.25,
+      "length_mm": 16,
+      "nut_side": "outside",
+      "screw_tip_z": 62,
+      "washer": true,
+      "clashes": {}
+    },
+    {
+      "group": "C_fan",
+      "index": 2,
+      "x": -40.56,
+      "y": 10.75,
+      "length_mm": 16,
+      "nut_side": "outside",
+      "screw_tip_z": 62,
+      "washer": true,
+      "clashes": {}
+    },
+    {
+      "group": "C_fan",
+      "index": 3,
+      "x": -0.5600000000000023,
+      "y": -29.25,
+      "length_mm": 16,
+      "nut_side": "outside",
+      "screw_tip_z": 62,
+      "washer": true,
+      "clashes": {}
+    },
+    {
+      "group": "C_fan",
+      "index": 4,
+      "x": -0.5600000000000023,
+      "y": 10.75,
+      "length_mm": 16,
+      "nut_side": "outside",
+      "screw_tip_z": 62,
+      "washer": true,
+      "clashes": {}
+    }
+  ],
+  "fastener_pair_clashes": [],
+  "physical_tested": false,
+  "flexible_cables_checked": false
+}

@@ -1,9 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=Alter 시작 및 복구
-Comment=서버, 모델, ngrok 및 SmartThings 연결 복구
-Exec=/home/pi/hw-agent/start.sh
-Path=/home/pi/hw-agent
+Name=Install Alter first
+Name[ko]=Alter 설치 후 사용하세요
+Exec=sh -c "echo Run scripts/install.sh first; read answer"
 Terminal=true
 Icon=system-run
-Categories=Utility;

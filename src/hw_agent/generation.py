@@ -1,4 +1,5 @@
 """Read llama.cpp token events without exposing the internal routing JSON."""
+from .i18n import gettext as translate
 import json
 import re
 import time
@@ -44,7 +45,7 @@ def stream_completion(payload, on_delta, cancelled):
         response.raise_for_status()
         for line in response.iter_lines():
             if cancelled.is_set():
-                raise HTTPException(499, "응답 생성을 중단했습니다.")
+                raise HTTPException(499, translate('응답 생성을 중단했습니다.'))
             if time.monotonic() - started > 180:
                 raise httpx.ReadTimeout("Generation deadline exceeded")
             if not line.startswith("data:"):

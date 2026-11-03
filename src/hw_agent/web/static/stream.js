@@ -8,7 +8,7 @@ async function streamAnswer(session, message, csrfToken, signal, update) {
   if (!response.ok) {
     if (response.status === 401) location.href = "/login";
     const error = await response.json();
-    throw new Error(typeof error.detail === "string" ? error.detail : "요청을 처리하지 못했습니다.");
+    throw new Error(typeof error.detail === "string" ? error.detail : tr("요청을 처리하지 못했습니다."));
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -34,6 +34,6 @@ async function streamAnswer(session, message, csrfToken, signal, update) {
   } finally {
     reader.releaseLock();
   }
-  if (!result) throw new Error("응답 연결이 끊겼습니다. 다시 시도하세요.");
+  if (!result) throw new Error(tr("응답 연결이 끊겼습니다. 다시 시도하세요."));
   return result;
 }

@@ -5,11 +5,11 @@ After=alter.service network-online.target
 Requires=alter.service
 
 [Service]
-User=pi
-Group=pi
-WorkingDirectory=/home/pi/hw-agent
-Environment=PYTHONPATH=/home/pi/hw-agent/src
-ExecStart=/home/pi/hw-agent/.venv/bin/uvicorn hw_agent.oauth_gateway:app --host 127.0.0.1 --port 8082 --workers 1 --no-access-log
+User=@USER@
+Group=@GROUP@
+WorkingDirectory=@ROOT@
+Environment=PYTHONPATH=@ROOT@/src
+ExecStart=@ROOT@/.venv/bin/uvicorn hw_agent.oauth_gateway:app --host 127.0.0.1 --port 8082 --workers 1 --no-access-log
 Restart=on-failure
 UMask=0077
 MemoryMax=256M

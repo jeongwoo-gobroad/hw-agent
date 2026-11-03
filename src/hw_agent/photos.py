@@ -1,4 +1,5 @@
 """Independent media library, volume identities and authenticated API."""
+from .i18n import gettext as translate
 import json
 from pathlib import Path
 import time
@@ -50,42 +51,42 @@ def root_path(root):
     storage.check_path(root['relative_path'])
     device = storage.device_for_uuid(root['uuid'])
     if not device or not device['mount']:
-        raise HTTPException(409, '사진 드라이브가 연결되지 않았습니다.')
+        raise HTTPException(409, translate('사진 드라이브가 연결되지 않았습니다.'))
     base = Path(device['mount']).resolve(strict=True)
     candidate = base / root['relative_path']
     storage.check_path(candidate)
     path = candidate.resolve(strict=True)
     storage.check_path(path)
     if not path.is_relative_to(base) or not path.is_dir():
-        raise HTTPException(403, '사진 폴더 경계를 벗어났습니다.')
+        raise HTTPException(403, translate('사진 폴더 경계를 벗어났습니다.'))
     return path
 
 
 def safe_media(identifier, live=False):
     found = db.rows('SELECT * FROM photos WHERE id=?', (identifier,))
     if not found:
-        raise HTTPException(404, '사진을 찾을 수 없습니다.')
+        raise HTTPException(404, translate('사진을 찾을 수 없습니다.'))
     item = found[0]
     roots = db.rows('SELECT * FROM photo_roots WHERE id=?', (item['root'],))
     if not roots:
-        raise HTTPException(404, '등록이 해제된 사진 폴더입니다.')
+        raise HTTPException(404, translate('등록이 해제된 사진 폴더입니다.'))
     base = root_path(roots[0])
     relative = item['live_relative'] if live else item['relative']
     if not relative:
-        raise HTTPException(404, '연결된 Live Photo 영상이 없습니다.')
+        raise HTTPException(404, translate('연결된 Live Photo 영상이 없습니다.'))
     candidate = base / relative
     storage.check_path(candidate)
     current = base
     for part in Path(relative).parts:
         if part == '..' or Path(relative).is_absolute():
-            raise HTTPException(403, '사진 폴더 밖의 파일입니다.')
+            raise HTTPException(403, translate('사진 폴더 밖의 파일입니다.'))
         current = current / part
         if current.is_symlink():
-            raise HTTPException(403, '심볼릭 링크는 열지 않습니다.')
+            raise HTTPException(403, translate('심볼릭 링크는 열지 않습니다.'))
     path = candidate.resolve(strict=True)
     storage.check_path(path)
     if not path.is_relative_to(base) or not path.is_file():
-        raise HTTPException(403, '사진 폴더 밖의 파일입니다.')
+        raise HTTPException(403, translate('사진 폴더 밖의 파일입니다.'))
     return path, item
 
 
@@ -109,7 +110,7 @@ class Folder(BaseModel):
 def add_root(body: Folder):
     path, device = storage.external_path(body.path)
     if not path.is_dir():
-        raise HTTPException(400, '사진 폴더를 선택하세요.')
+        raise HTTPException(400, translate('사진 폴더를 선택하세요.'))
     relative = str(path.relative_to(Path(device['mount']).resolve()))
     with db.connect() as conn:
         conn.execute('''INSERT INTO photo_roots(id,uuid,relative_path,path,mount,label) VALUES(?,?,?,?,?,?)
@@ -171,7 +172,7 @@ def items(root: int = 0, album: str | None = None, topic: str = '', person: int 
           after: float | None = None, before: float | None = None, exclude: bool = False,
           kind: str = '', q: str = '', offset: int = 0):
     if offset < 0 or (after is not None and before is not None and after > before):
-        raise HTTPException(400, '날짜 범위 또는 페이지 값이 올바르지 않습니다.')
+        raise HTTPException(400, translate('날짜 범위 또는 페이지 값이 올바르지 않습니다.'))
     where, args = ['NOT EXISTS(SELECT 1 FROM photos l WHERE l.root=p.root AND l.live_relative=p.relative)'], []
     for key, value in [('root', root), ('album', album), ('kind', kind)]:
         if value is not None and (value or key == 'album'):
@@ -180,7 +181,7 @@ def items(root: int = 0, album: str | None = None, topic: str = '', person: int 
         where.append('p.name LIKE ?'); args.append('%'+q+'%')
     if topic:
         if topic not in TOPICS:
-            raise HTTPException(400, '알 수 없는 주제입니다.')
+            raise HTTPException(400, translate('알 수 없는 주제입니다.'))
         where.append('EXISTS(SELECT 1 FROM json_each(COALESCE(p.manual_labels,p.labels)) WHERE value=?)'); args.append(topic)
     if person:
         where.append('EXISTS(SELECT 1 FROM photo_faces f WHERE f.photo=p.id AND f.person=?)'); args.append(person)
@@ -219,10 +220,10 @@ def rename_person(identifier: int, body: PersonName):
 @router.get('/faces/{identifier}/thumbnail')
 def face_thumbnail(identifier: int):
     face = db.rows('SELECT photo FROM photo_faces WHERE id=?', (identifier,))
-    if not face: raise HTTPException(404, '얼굴을 찾을 수 없습니다.')
+    if not face: raise HTTPException(404, translate('얼굴을 찾을 수 없습니다.'))
     safe_media(face[0]['photo'])
     target = CACHE / f'{identifier}.face.jpg'
-    if not target.exists(): raise HTTPException(404, '얼굴 미리보기 준비 중입니다.')
+    if not target.exists(): raise HTTPException(404, translate('얼굴 미리보기 준비 중입니다.'))
     return FileResponse(target, media_type='image/jpeg')
 
 
@@ -234,10 +235,10 @@ class FacePerson(BaseModel):
 def move_face(identifier: int, body: FacePerson):
     with db.connect() as conn:
         face = conn.execute('SELECT * FROM photo_faces WHERE id=?', (identifier,)).fetchone()
-        if not face: raise HTTPException(404, '얼굴을 찾을 수 없습니다.')
+        if not face: raise HTTPException(404, translate('얼굴을 찾을 수 없습니다.'))
         if body.person:
             if not conn.execute('SELECT 1 FROM photo_people WHERE id=?', (body.person,)).fetchone():
-                raise HTTPException(404, '사람을 찾을 수 없습니다.')
+                raise HTTPException(404, translate('사람을 찾을 수 없습니다.'))
             target = body.person
         else:
             target = conn.execute("INSERT INTO photo_people(name) VALUES('')").lastrowid
@@ -252,7 +253,7 @@ class Labels(BaseModel):
 @router.patch('/items/{identifier}')
 def labels(identifier: int, body: Labels):
     if body.labels is not None and any(x not in TOPICS for x in body.labels):
-        raise HTTPException(400, '알 수 없는 주제입니다.')
+        raise HTTPException(400, translate('알 수 없는 주제입니다.'))
     with db.connect() as conn:
         conn.execute('UPDATE photos SET manual_labels=? WHERE id=?',
                      (json.dumps(sorted(set(body.labels))) if body.labels is not None else None, identifier))
@@ -263,7 +264,7 @@ def labels(identifier: int, body: Labels):
 def thumbnail(identifier: int):
     safe_media(identifier)
     path = CACHE / f'{identifier}.jpg'
-    if not path.exists(): raise HTTPException(404, '미리보기 준비 중입니다.')
+    if not path.exists(): raise HTTPException(404, translate('미리보기 준비 중입니다.'))
     return FileResponse(path, media_type='image/jpeg')
 
 

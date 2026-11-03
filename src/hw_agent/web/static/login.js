@@ -20,7 +20,7 @@ document.querySelector('#captcha-refresh').onclick=()=>refreshChallenge();
 setInterval(()=>{
   if(!blockedUntil)return;
   const seconds=Math.ceil((blockedUntil-Date.now())/1000);
-  submit.disabled=seconds>0;document.querySelector('#retry-status').textContent=seconds>0?`${seconds}초 후 다시 시도할 수 있습니다.`:'';
+  submit.disabled=seconds>0;document.querySelector('#retry-status').textContent=seconds>0?tr("{{v0}}초 후 다시 시도할 수 있습니다.", {v0: seconds}):'';
   if(seconds<=0){blockedUntil=0;refreshChallenge();}
 },1000);
 form.addEventListener('submit',async event=>{
@@ -29,7 +29,7 @@ form.addEventListener('submit',async event=>{
   try{
     const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(form)))});
     const result=await response.json();
-    if(!response.ok){block(response);throw new Error(typeof result.detail==='string'?result.detail:'입력 내용을 확인하세요.');}
+    if(!response.ok){block(response);throw new Error(typeof result.detail==='string'?result.detail:tr("입력 내용을 확인하세요."));}
     location.href=new URLSearchParams(location.search).get('next')==='/panel'?'/panel':'/';
   }catch(error){errorText.textContent=error.message;if(publicLogin&&!blockedUntil)await refreshChallenge();submit.disabled=!ready||Date.now()<blockedUntil;}
 });

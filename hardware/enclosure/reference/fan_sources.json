@@ -1,0 +1,44 @@
+{
+  "checked_on": "2026-10-21",
+  "identification": {
+    "reported_model": "CoolCox CC3007H05S",
+    "evidence_type": "first-hand owner reports, not a manufacturer guarantee for every Pi case batch",
+    "sources": [
+      "https://forums.raspberrypi.com/viewtopic.php?p=2245360",
+      "https://github.com/folkhack/raspberry-pi-pwm-fan-2/issues/5"
+    ]
+  },
+  "mechanical_drawing": {
+    "scope": "current CoolCox CC3007 family drawing",
+    "product_url": "https://www.coolcox.com/product/dc-axial-fan/3007/",
+    "drawing_url": "https://www.coolcox.com/uploads/CC3007%E5%B0%BA%E5%AF%B8new.jpg",
+    "visually_inspected": true,
+    "body_xy_mm": [30.0, 30.0],
+    "body_xy_tolerance_plus_minus_mm": 0.5,
+    "thickness_mm": 7.5,
+    "thickness_tolerance_plus_minus_mm": 0.5,
+    "hole_pitch_xy_mm": [24.0, 24.0],
+    "hole_pitch_tolerance_plus_minus_mm": 0.3,
+    "four_mount_holes_diameter_mm": 3.4,
+    "hole_diameter_tolerance_plus_minus_mm": 0.3,
+    "note": "Page family title says 30x30x7; the actual mechanical drawing specifies 7.5 +/-0.5 thickness. Older catalogues and OEM variants may differ."
+  },
+  "cross_check": {
+    "url": "https://www.sparkfun.com/raspberry-pi-5-case-black-grey.html",
+    "listed_case_fan_dimensions_mm": [30.0, 30.0, 7.5]
+  },
+  "electrical_specification": {
+    "source": "https://www.raspberrypi.com/products/raspberry-pi-5-case/",
+    "voltage_v": 5,
+    "maximum_rpm": 8000,
+    "rpm_tolerance_percent": 15,
+    "maximum_airflow_cfm": 2.79,
+    "note": "Reuse the original Pi 4-wire fan. Generic CC3007 catalogue electrical and bearing options are not automatically identical to the Pi OEM fan."
+  },
+  "design_decision": {
+    "clearance_box_mm": [30.5, 30.5, 8.0],
+    "fan_plate_z_previous_mm": 45.0,
+    "fan_plate_z_revised_mm": 46.0,
+    "note": "The plate moves 1mm rearward; maximum-depth fan bottom remains at z=38mm, preserving the previous heatsink clearance."
+  }
+}

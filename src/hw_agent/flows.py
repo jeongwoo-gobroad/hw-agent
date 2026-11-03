@@ -1,3 +1,4 @@
+from .i18n import gettext as translate
 import json
 import threading
 import time
@@ -12,16 +13,16 @@ last_run = {}
 
 def validate(steps):
     if not isinstance(steps, list) or not 1 <= len(steps) <= 20:
-        raise HTTPException(400, "Flow에는 1~20단계가 필요합니다.")
+        raise HTTPException(400, translate('Flow에는 1~20단계가 필요합니다.'))
     for step in steps:
         if step.get("type") == "delay":
             if not isinstance(step.get("seconds"), (float, int)) or not 0 <= step["seconds"] <= 60:
-                raise HTTPException(400, "지연은 0~60초입니다.")
+                raise HTTPException(400, translate('지연은 0~60초입니다.'))
         elif step.get("type") == "device":
             if not all(isinstance(step.get(k), str) and step[k] for k in ("device_id", "capability", "command")):
-                raise HTTPException(400, "기기 단계 필드가 부족합니다.")
+                raise HTTPException(400, translate('기기 단계 필드가 부족합니다.'))
         else:
-            raise HTTPException(400, "지원하지 않는 Flow 단계입니다.")
+            raise HTTPException(400, translate('지원하지 않는 Flow 단계입니다.'))
     return steps
 
 
@@ -32,10 +33,10 @@ def execute(flow_id, request_id=None):
         if prior:
             return prior[0]
         if flow_id in active or time.monotonic() - last_run.get(flow_id, 0) < 3:
-            raise HTTPException(409, "Flow가 실행 중이거나 쿨다운 중입니다.")
+            raise HTTPException(409, translate('Flow가 실행 중이거나 쿨다운 중입니다.'))
         flow = db.rows("SELECT * FROM flows WHERE id=?", (flow_id,))
         if not flow:
-            raise HTTPException(404, "Flow를 찾을 수 없습니다.")
+            raise HTTPException(404, translate('Flow를 찾을 수 없습니다.'))
         steps = validate(json.loads(flow[0]["steps"]))
         active.add(flow_id)
         with db.connect() as conn:

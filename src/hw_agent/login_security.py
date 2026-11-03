@@ -1,4 +1,5 @@
 """Persistent login policy and single-use, client-bound image challenges."""
+from .i18n import gettext as translate
 import base64
 import hashlib
 import hmac
@@ -46,7 +47,7 @@ def check_block(c,key,now):
     row=c.execute('SELECT * FROM login_failures WHERE client=?',(key,)).fetchone()
     if row and row['blocked_until']>now:
         seconds=max(1,int(row['blocked_until']-now)+1)
-        raise HTTPException(429,f'로그인이 일시 차단됐습니다. 약 {(seconds+59)//60}분 후 다시 시도하세요.',headers={'Retry-After':str(seconds)})
+        raise HTTPException(429,translate('로그인이 일시 차단됐습니다. 약 %(v0)s분 후 다시 시도하세요.') % {'v0': (seconds+59)//60},headers={'Retry-After':str(seconds)})
     return row
 
 
@@ -60,7 +61,7 @@ def challenge(ip):
         c.execute('DELETE FROM login_failures WHERE started<? AND blocked_until<?',(now-86400,now))
         c.execute('DELETE FROM login_challenges WHERE expires<?',(now,))
         latest=c.execute('SELECT max(created) FROM login_challenges WHERE client=?',(key,)).fetchone()[0]
-        if latest and now-latest<1: raise HTTPException(429,'잠시 후 새 보안 문자를 요청하세요.',headers={'Retry-After':'1'})
+        if latest and now-latest<1: raise HTTPException(429,translate('잠시 후 새 보안 문자를 요청하세요.'),headers={'Retry-After':'1'})
         c.execute('DELETE FROM login_challenges WHERE client=?',(key,))
         c.execute('INSERT INTO login_challenges VALUES(?,?,?,?,?)',(identifier,key,answer_hash(identifier,answer),now+180,now))
     data=ImageCaptcha(width=260,height=90).generate(answer).getvalue()
@@ -84,6 +85,6 @@ def verify(username,password,ip,exposure,challenge_id='',answer=''):
             count=(row['count'] if row and started==row['started'] else 0)+1
             blocked=now+settings['block_minutes']*60 if count>=settings['max_failures'] else 0
             c.execute('INSERT OR REPLACE INTO login_failures VALUES(?,?,?,?)',(key,count,started,blocked))
-            failure=HTTPException(429,f"로그인 실패 {count}회로 {settings['block_minutes']}분 차단됐습니다.",headers={'Retry-After':str(settings['block_minutes']*60)}) if blocked else HTTPException(401,'아이디·비밀번호 또는 보안 문자를 확인하세요.')
+            failure=HTTPException(429,translate('로그인 실패 %(v0)s회로 %(v1)s분 차단됐습니다.') % {'v0': count, 'v1': settings['block_minutes']},headers={'Retry-After':str(settings['block_minutes']*60)}) if blocked else HTTPException(401,translate('아이디·비밀번호 또는 보안 문자를 확인하세요.'))
     # 예외를 트랜잭션 밖에서 발생시켜 실패 횟수와 일회용 CAPTCHA 소비를 보존한다.
     if failure: raise failure

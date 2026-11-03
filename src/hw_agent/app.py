@@ -1,4 +1,6 @@
+from .i18n import gettext as translate
 from contextlib import asynccontextmanager
+from contextvars import copy_context
 import hashlib
 import json
 from pathlib import Path
@@ -20,6 +22,7 @@ from .motion import motion
 from . import oauth_gateway, voice
 from . import photos, resources
 from . import file_browser, inventory, login_security
+from .i18n import language, request_language
 
 
 @asynccontextmanager
@@ -53,7 +56,7 @@ app = FastAPI(title="Alter", docs_url=None, redoc_url=None, openapi_url=None, li
 app.include_router(photos.router)
 app.include_router(file_browser.router)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=__import__("os").getenv(
-    "ALLOWED_HOSTS", "127.0.0.1,localhost,127.0.0.1,raspberrypi,raspberrypi.local").split(","))
+    "ALLOWED_HOSTS", "127.0.0.1,localhost").split(","))
 WEB = Path(__file__).parent / "web"
 app.add_api_route("/oauth/start", oauth_gateway.start, methods=["GET"])
 app.add_api_route("/oauth/callback", oauth_gateway.callback, methods=["GET"])
@@ -61,13 +64,14 @@ app.add_api_route("/oauth/callback", oauth_gateway.callback, methods=["GET"])
 
 @app.middleware("http")
 async def security(request: Request, call_next):
+    language.set(request_language(request))
     path = request.url.path
     public = (path in {"/login", "/api/login", "/api/login/challenge", "/health"} or path.startswith("/static/")
               or (path in {"/oauth/start", "/oauth/callback"} and request.method == "GET"))
     current = auth.session(request) if not public else None
     if not public and current is None:
         if path.startswith("/api/"):
-            return JSONResponse({"detail": "로그인이 필요합니다."}, status_code=401)
+            return JSONResponse({"detail": translate('로그인이 필요합니다.')}, status_code=401)
         return RedirectResponse("/login?next=/panel" if path == "/panel" else "/login", 303)
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         origin = request.headers.get("origin")
@@ -80,7 +84,7 @@ async def security(request: Request, call_next):
         except ValueError:
             return JSONResponse({"detail": "Invalid content length"}, status_code=400)
         if length > (2000100 if path == "/api/voice/transcribe" else 65536):
-            return JSONResponse({"detail": "요청이 너무 큽니다."}, status_code=413)
+            return JSONResponse({"detail": translate('요청이 너무 큽니다.')}, status_code=413)
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
@@ -92,12 +96,12 @@ async def security(request: Request, call_next):
 
 @app.exception_handler(FileNotFoundError)
 async def missing(request, exc):
-    return JSONResponse({"detail": "파일 또는 드라이브가 없습니다."}, status_code=404)
+    return JSONResponse({"detail": translate('파일 또는 드라이브가 없습니다.')}, status_code=404)
 
 
 @app.exception_handler(PermissionError)
 async def permission_error(request, exc):
-    return JSONResponse({"detail": "해당 파일 또는 폴더의 접근 권한이 없습니다."}, status_code=403)
+    return JSONResponse({"detail": translate('해당 파일 또는 폴더의 접근 권한이 없습니다.')}, status_code=403)
 
 class Login(BaseModel):
     username: str = Field(max_length=100)
@@ -196,9 +200,9 @@ class DiskAction(BaseModel):
 @app.post("/api/devices/action")
 def disk_action(body: DiskAction):
     if camera.recording or indexing.status["running"]:
-        raise HTTPException(409, "녹화 또는 색인 종료 후 시도하세요.")
+        raise HTTPException(409, translate('녹화 또는 색인 종료 후 시도하세요.'))
     if not any(d["path"] == body.device for d in storage.devices()):
-        raise HTTPException(403, "외장 드라이브만 관리할 수 있습니다.")
+        raise HTTPException(403, translate('외장 드라이브만 관리할 수 있습니다.'))
     result = subprocess.run(["sudo", "-n", "/usr/local/sbin/alter-disk"],
                             input=body.model_dump_json(), text=True, capture_output=True, timeout=35)
     if result.returncode:
@@ -241,7 +245,7 @@ def add_root(body: Root):
 def delete_root(identifier: int):
     roots = db.rows("SELECT * FROM roots WHERE id=?", (identifier,))
     if camera.recording and roots and camera.record_dir and Path(camera.record_dir).is_relative_to(roots[0]["path"]):
-        raise HTTPException(409, "이 폴더에 녹화 중입니다. 녹화 종료 후 해제하세요.")
+        raise HTTPException(409, translate('이 폴더에 녹화 중입니다. 녹화 종료 후 해제하세요.'))
     with db.connect() as conn:
         conn.execute("DELETE FROM search WHERE rowid IN (SELECT id FROM files WHERE root=?)", (identifier,))
         conn.execute("DELETE FROM files WHERE root=?", (identifier,))
@@ -308,7 +312,7 @@ class Title(BaseModel):
 
 @app.post("/api/sessions")
 def new_session(body: Title):
-    return chat.create(body.title)
+    return chat.create(translate("새 대화") if "title" not in body.model_fields_set else body.title)
 
 
 @app.patch("/api/sessions/{identifier}")
@@ -343,9 +347,10 @@ def message(identifier: str, body: Message):
 @app.post("/api/sessions/{identifier}/messages/stream")
 def message_stream(identifier: str, body: Message, request: Request):
     if not db.rows("SELECT id FROM sessions WHERE id=?", (identifier,)):
-        raise HTTPException(404, "대화를 찾을 수 없습니다.")
+        raise HTTPException(404, translate('대화를 찾을 수 없습니다.'))
     events = queue.Queue()
     cancelled = threading.Event()
+    context = copy_context()
 
     def generate():
         try:
@@ -354,14 +359,14 @@ def message_stream(identifier: str, body: Message, request: Request):
         except HTTPException as exc:
             events.put({"type": "error", "message": exc.detail})
         except Exception:
-            events.put({"type": "error", "message": "응답을 생성하지 못했습니다. 다시 시도하세요."})
+            events.put({"type": "error", "message": translate("응답을 생성하지 못했습니다. 다시 시도하세요.")})
         finally:
             events.put(None)
 
     def stream():
-        threading.Thread(target=generate, daemon=True).start()
+        threading.Thread(target=context.run, args=(generate,), daemon=True).start()
         try:
-            yield 'data: {"type":"status","text":"요청을 읽고 있습니다…"}\n\n'
+            yield 'data: ' + json.dumps({"type": "status", "text": translate("요청을 읽고 있습니다…")}) + '\n\n'
             while True:
                 if auth.session(request) is None:
                     break
@@ -448,7 +453,7 @@ def edit_flow(identifier: str, body: Flow):
 @app.delete("/api/flows/{identifier}")
 def remove_flow(identifier: str):
     if identifier in flows.active:
-        raise HTTPException(409, "실행 중인 Flow입니다.")
+        raise HTTPException(409, translate('실행 중인 Flow입니다.'))
     with db.connect() as conn:
         conn.execute("DELETE FROM flows WHERE id=?", (identifier,))
     return {"ok": True}
@@ -524,7 +529,7 @@ def camera_stop():
 @app.get("/api/camera/stream")
 def camera_stream(request: Request):
     if not camera.running:
-        raise HTTPException(409, "카메라를 먼저 켜세요.")
+        raise HTTPException(409, translate('카메라를 먼저 켜세요.'))
     def authenticated_stream():
         checked_at = 0
         for frame in camera.stream():
@@ -562,7 +567,7 @@ def gestures(body: Gestures):
     allowed = {"Open_Palm", "Closed_Fist", "Victory", "Thumb_Up", "Thumb_Down"}
     for key, value in body.mappings.items():
         if key not in allowed or (value and value != "chat" and not value.startswith("flow:")):
-            raise HTTPException(400, "잘못된 제스처 매핑")
+            raise HTTPException(400, translate('잘못된 제스처 매핑'))
     db.set_state("gesture_mappings", json.dumps(body.mappings))
     camera.enable_gestures(body.enabled)
     return camera.state()

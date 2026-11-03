@@ -1,4 +1,5 @@
 """SQLite-backed directory and file queues survive service and power restarts."""
+from .i18n import gettext as translate
 import json
 import hashlib
 import os
@@ -59,11 +60,11 @@ def safe_path(base, relative):
     storage.check_path(relative)
     parts=Path(relative).parts
     if Path(relative).is_absolute() or '..' in parts or any(p.startswith('.') for p in parts):
-        raise HTTPException(403,'등록 폴더 밖의 경로입니다.')
+        raise HTTPException(403,translate('등록 폴더 밖의 경로입니다.'))
     target=base
     for part in parts:
         target=target/part
-        if target.is_symlink(): raise HTTPException(403,'심볼릭 링크는 처리하지 않습니다.')
+        if target.is_symlink(): raise HTTPException(403,translate('심볼릭 링크는 처리하지 않습니다.'))
     return target
 
 

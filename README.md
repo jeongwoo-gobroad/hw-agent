@@ -1,162 +1,95 @@
-# Alter / 얼터 — Raspberry Pi Personal Agent
+# Alter
 
-Raspberry Pi 5에서 외장 파일 검색, 한국어 대화, SmartThings와 카메라를 통합하는 Python 로컬 에이전트입니다. 기기 동작 프리셋을 **Flow**라고 부릅니다.
+[English](README.md) · [한국어](README.ko.md)
 
-현재 Raspberry Pi에 웹 서비스가 배포되어 있습니다. 2026-10-20 기준 SmartThings OAuth 연결, 실제 기기 조회, 사용자가 허용한 조명의 상태 변경과 원상복구, 갱신 토큰 교체까지 검증했습니다. 기능별 검증 범위와 미완료 항목은 [검증 기록](docs/acceptance.md)에 구분합니다.
+A local personal agent for Raspberry Pi 5. Find files and photos, control your SmartThings home, and use a touch dashboard in a printable desktop enclosure.
 
-## 시작하기
+![Alter running on the assembled device](docs/images/alter-device.png)
 
-외부 대시보드: https://example.ngrok-free.app/
+The photo above shows a working build with the camera below the display. The CAD render below shows the camera above it. Camera rotation and mirroring are configurable in the dashboard.
 
-내부망 전용 대시보드: `http://127.0.0.1:11977`. 외부 포트포워딩용 HTTP 진입점은 `8080`이며 보안 문자 인증을 추가합니다. 프로젝트 루트 `.env`의 ID/PW로 로그인합니다. 비밀번호는 저장소에 공개하지 않습니다.
+## What it does
 
-1. **드라이브**에서 USB/NVMe 장치의 폴더를 선택해 색인에 등록합니다. 마운트·안전 해제, 선택 폴더의 SMB 공유와 읽기 전용 설정을 제공합니다.
-2. **Files → 파일 검색**에서 키워드, 확장자, 폴더, 수정/생성 날짜로 검색합니다. 결과 카드에서 문서·사진·영상을 미리 보고 필요할 때 원본을 내려받습니다.
-3. **얼터와 대화**에서 자연어로 파일을 찾거나 등록된 기기/Flow 실행을 제안받습니다. 기기 명령은 확인 버튼을 눌러 실행합니다. 대화별 생성·이름 변경·삭제·JSON 내보내기를 제공합니다.
-4. **스마트홈 · Flow**에서 삼성 계정으로 연결하고 기기를 불러옵니다. Flow는 기기 명령과 대기 단계를 조합하고 실행 기록을 남깁니다.
-5. **카메라**에서 실시간 영상을 켜고 등록된 외장 폴더에 녹화합니다. 제스처 기능은 별도로 켜고 동작을 Flow 또는 대시보드 알림에 연결합니다.
-
-## 구현된 기능과 경계
-
-| 영역 | 현재 동작 |
+| Feature | In daily use |
 |---|---|
-| 인증 | .env ID/PW, 해시된 서버 세션, DB에 저장되는 실패 횟수·차단, 외부 CAPTCHA, CSRF/Origin 검증, 12시간 만료 |
-| 드라이브 | lsblk USB/NVMe 파티션, UUID 추적, 제한된 sudo 도우미로 마운트/해제/SMB 관리 |
-| 색인 | 10분마다 변경 대조, 3일마다 SHA-256 검증; 같은 내용은 추출/분류 재사용, DB 완료 위치에서 재개 |
-| 검색 | SQLite FTS5 BM25, 한국어 문자 bigram, 최대 100개 후보의 선택적 문자 TF-IDF 재정렬 |
-| 문서 | TXT/일반 텍스트, DOCX/HWPX XML, 구형 HWP(pyhwp), 텍스트 PDF(pypdf); OCR 미지원 |
-| 미리보기 | Pillow/HEIF 사진 변환, FFmpeg MOV 등 영상 프록시, 문서의 추출 텍스트 |
-| AI | llama.cpp GGUF 로컬 추론, 대화 저장, 파일 카드, 기기/Flow 확인 제안; 최근 일부 대화만 추론 문맥에 포함 |
-| SmartThings | OAuth 인가 코드, 상태값/브라우저 바인딩, 암호화 토큰, 자동 갱신/회전, 연결 해제 |
-| 기기 명령 | switch, switchLevel, audioVolume, colorTemperature 허용 목록; 전체 SmartThings capability를 지원하는 것은 아님 |
-| Flow | 생성/편집/복제/삭제, 순차 실행, 실패 즉시 중단, 요청 중복 방지, 실행 기록 |
-| 카메라 | Picamera2 IMX708 640×480 10fps MJPEG, FFmpeg MP4 120초 분할, 잔여 공간 검사 |
-| 제스처 | MediaPipe 손바닥/주먹/V/엄지 위/엄지 아래, 신뢰도·유지시간·쿨다운, 기본 비활성 |
-| 화면 | `/panel`과 Pi Chromium 자동 시작 설정; 실제 터치 조작 검증은 별도 |
-| 음성 | whisper.cpp 한국어 전사·호출 대기 구현, 실제 마이크의 인식률 검증은 필요 |
+| Files | Browse registered folders, search with BM25 or TF-IDF, and preview PDF, text, code, images and videos, including HEIF and MOV conversion. |
+| Photos | Browse a timeline and folder albums; filter capture dates inside or outside a range; search multiple subjects and named face groups. Live Photo pairs stay together. |
+| Local chat | Stream replies from a local language model. Search files or photos by subject, saved person name and date; keep separate conversations. |
+| Smart home | Connect your own SmartThings account through OAuth. Save device actions as Flows and confirm actions proposed in chat. |
+| Camera and motion | Live preview, segmented recording, and configurable face-presence / five-hand-gesture Flow triggers with dwell, cooldown and repeat controls. |
+| Touch panel | Large smart-home controls, chat, Korean/English popup keyboard, and optional Korean voice input. |
+| Storage and system | Manage file-index roots, photo roots and SMB shares independently. Track progress, ETA, CPU/RAM, CPU temperature and supported V3D GPU metrics. |
 
-생성일은 파일시스템에서 실제 birth time을 제공할 때만 저장하며, Linux ctime을 생성일로 오인하지 않습니다. 현재 테스트 FAT32 마운트에서는 생성일이 없을 수 있습니다. 문서 미리보기는 원본 레이아웃 렌더러가 아닙니다. Apple 기기에서 촬영한 모든 코덱 조합의 재생을 보장하지 않습니다.
+English and Korean are available from the language menu on the login page and dashboard. Light and dark themes use the same lavender/ivory palette. User-owned names, filenames and chat history stay unchanged when switching language.
 
-## 장비와 배치
+## In the browser
 
-- Raspberry Pi 5 8GB, Cortex-A76 4코어, Debian 13 ARM64, Python 3.13.5.
-- 소스/설치: Pi `~/hw-agent`, Windows `<local-checkout>`.
-- 웹 11977(내부망 전용), 8080(외부 HTTP/ngrok), 단일 백엔드18080(loopback), 모델 8081(loopback), 독립 OAuth 콜백 앱 8082(loopback, 대체 구성용).
-- USB SanDisk 약 28.7GiB: 기존 파일을 보존하고 `Alter-test` 폴더만 검증에 사용했습니다.
-- IMX708 카메라, DSI 화면. 기존 팬 서비스 유지.
-- `.env`, SQLite, 토큰, 대화, 캐시, 녹화, 모델은 Git에서 제외합니다.
+Screenshots of the running app with a separate sample library and example devices. [Browse the gallery](docs/screenshots.md).
 
-## 설치·복원
+![Alter dashboard](docs/images/overview-en.png)
 
-[운영 가이드](docs/operations.md)에 OS 의존성, 서비스, Samba, 모델, cgroup, 백업 절차를 정리했습니다. `requirements.txt`는 직접 의존성, `requirements-pi.lock.txt`는 검증 환경의 추가 설치 패키지 스냅샷입니다. Picamera2/libcamera는 apt 환경을 사용하므로 venv에 `--system-site-packages`가 필요합니다.
+## Build one
 
-```bash
-git clone https://github.com/jeongwoo-gobroad/hw-agent ~/hw-agent
+The reference build uses a **Raspberry Pi 5 with 8 GB RAM**, 64-bit Raspberry Pi OS, a **7-inch Touch Display 2**, **Camera Module 3 Standard**, cooling, and a suitable Pi 5 power supply. A camera, display, microphone and external drive are optional for the web-only features.
+
+![Assembled enclosure CAD preview](hardware/enclosure/output/preview/assembled_front.png)
+
+[Printable STL parts](hardware/enclosure/output/stl) · [Editable STEP assembly](hardware/enclosure/output/home_control_center_assembly.step) · [Assembly, fasteners and rendering source](hardware/enclosure/README.md)
+
+Fourteen STL files include twelve assembly parts and two fit-test pieces. Individual parts fit a 220 × 220 mm print bed. Camera-above and camera-below layouts need matching display/camera orientation; check the stand attachment and cable routing for your chosen assembly. The provided CAD stand is not a promise of a mechanically identical 180° reversal.
+
+## Install
+
+Run as the normal Pi desktop account, not as root:
+
+```sh
+git clone https://github.com/jeongwoo-gobroad/hw-agent.git ~/hw-agent
 cd ~/hw-agent
-cp .env.example .env
-# ID/PW와 충분히 긴 무작위 SESSION_SECRET을 설정
 bash scripts/install.sh
 ```
 
-설치 스크립트는 현재 계정 `pi`와 설치 경로에 맞춰져 있습니다. 다른 환경에서는 systemd 경로/계정과 허용 호스트부터 수정하세요. 모델·제스처 가중치와 Samba 설정은 운영 가이드의 별도 절차가 필요합니다.
+The setup prompts for a new dashboard account and your trusted LAN subnet. It generates a session secret and renders service files for the current Linux account. No shared password, tunnel address or SmartThings account is provided.
 
-## SmartThings OAuth
+Open `http://<pi-host>:11977`. Add folders separately under **Drives** and **Photo folders**. Use the [setup guide](docs/setup.md) for the optional language model, SMB, touch panel, voice and startup recovery.
 
-[OAuth 가이드](docs/oauth.md)에 앱 등록, HTTPS 콜백, 로그인, 재인증과 장애 복구를 설명합니다. ngrok 무료 플랜의 계정 고정 개발 도메인과 자동 HTTPS 인증서를 사용합니다. 별도 소유 도메인은 필요하지 않습니다. 무료 브라우저 안내와 사용량 한도는 적용됩니다. 이미 연결된 토큰의 자동 갱신은 콜백 주소의 상시 가용성과 별개입니다. 사용자 요청에 따라 ngrok은 현재 대시보드8080을 제공합니다. ID/PW 인증과 CSRF 검증을 유지하며 외부 HTTPS 세션 쿠키에는 Secure를 설정합니다. OAuth 콜백도 같은 도메인에서 처리합니다. 로그인 전에는 파일 검색·다운로드·카메라 API에 접근할 수 없습니다.
-
-## 개발·검증
-
-```bash
-PYTHONPATH=src .venv/bin/python tests/test_boundaries.py
-PYTHONPATH=src .venv/bin/python tests/test_oauth.py
-# 실제 USB에 테스트 파일을 생성하고 카메라 녹화를 수행하는 통합 시험
-.venv/bin/python tests/live_smoke.py
+```sh
+bash scripts/install-llm.sh       # optional local chat model
+bash scripts/install-startup.sh   # boot services and desktop entry points
 ```
 
-실기기 시험은 [검증 기록](docs/acceptance.md)을 먼저 읽으세요. 저장장치 시험은 등록 USB를 실제로 해제/재마운트합니다. 소스 변경 시 관련 문서와 검증 결과도 갱신합니다. 에이전트용 구조 안내는 [readme-for-agent.md](readme-for-agent.md)입니다.
+Existing installations: back up private state before updating. Keep `.env`, `data/` and `models/`; do not replace them with example files. [Update and recovery guide](docs/operations.md).
 
-## 라이선스
+## SmartThings with ngrok
 
-자체 코드 GPL-3.0-or-later. 외부 라이브러리·모델은 각 라이선스를 따릅니다. Raspberry Pi 공식 로고는 상표이며 GPL 대상이 아닙니다. [자산 출처](src/hw_agent/web/static/ASSETS.md)를 참고하세요. 공식 Raspberry Pi 제품이나 후원 프로젝트라는 의미는 아닙니다.
+Use **your own ngrok account and SmartThings OAuth app**. The setup helper stores credentials locally and connects the HTTPS callback to your installation; other installers do not use this project's home or credentials.
 
-## 실시간 대화와 화면 테마
+```sh
+.venv/bin/python scripts/configure.py --smartthings --lang en
+bash scripts/install-ngrok.sh
+sudo systemctl restart alter alter-oauth
+```
 
-답변은 llama.cpp의 실제 생성 이벤트를 SSE로 전달해 완료 전부터 표시합니다. 생성 준비/경과 시간과 중단 버튼을 제공하며, 기기·Flow 명령은 완성된 응답을 검증한 뒤 사용자 확인을 거칩니다. 검색 후보는 검색 완료 후 카드로 표시합니다. 상단 테마 버튼에서 연보라·아이보리 라이트 모드와 짙은 보라 다크 모드를 전환할 수 있으며 브라우저에 선택을 저장합니다. 로그인·대시보드·터치 패널에 같은 테마를 적용합니다.
+Follow the [OAuth setup guide](docs/oauth.md) before running these commands. ngrok's free development domain can provide HTTPS, subject to its bandwidth/request limits. **SmartThings has separate API plan and region requirements**; new or edited OAuth apps require an eligible paid plan from November 4, 2026. ngrok does not remove those requirements. See [Samsung's policy](https://blog.smartthings.com/smartthings-updates/smartthings-api-additional-details-for-developers-and-business-partners/).
 
-현재 모델은 **Qwen3.5-4B-Q4_K_M**, 운영 추론은 **llama.cpp CPU/OpenBLAS**입니다. 2026-11-03 공식 llama-bench의 128토큰 생성 3회 평균은 1.67 tokens/s였습니다. 동시 색인과 온도 제한 이력이 있는 장비 실측이며, Vulkan은 GPU 전체 적재 후 제한 시간 내 예열을 끝내지 못해 운영에 채택하지 않았습니다. [CPU/GPU 시험 조건과 결과](docs/models.md)를 확인하세요.
+## Model and limits
 
-## 내장 디스플레이와 음성
+The default is **Qwen3.5-4B-Q4_K_M**, served by **llama.cpp on CPU/OpenBLAS**. A Pi 5 measurement with concurrent services averaged 1.67 generated tokens/s over three 128-token runs. Vulkan loaded the model but did not finish warmup within the test limits, so GPU inference is not enabled by default. [Model sources and benchmark conditions](docs/models.md).
 
-`/panel`은 큰 터치 버튼의 스마트홈/Flow와 챗봇을 제공하며 챗봇을 누르면 두벌식 한글·영문 팝업 키보드가 열립니다. 새 대화/대화 목록, 연보라·아이보리 테마를 지원합니다. USB 또는 OS에서 오디오 입력으로 인식되는 GPIO 마이크를 연결한 뒤 ‘음성 입력’을 누르세요. HTTPS 또는 Pi localhost에서 브라우저 마이크 권한이 필요합니다. 음성 파일 입력도 지원합니다.
+Photo subjects use CLIP; face groups use YuNet/SFace. Labels and group assignments can be wrong and can be corrected in the UI. Chat searches stored photo metadata; it is not unrestricted visual question answering. Voice currently transcribes Korean with whisper.cpp and requires a microphone. Gesture accuracy, cooling and performance depend on the installation.
 
-음성은 Pi의 whisper.cpp v1.8.3 + Whisper tiny 다국어 모델에서 한국어로 처리합니다. `sh scripts/install-voice.sh`로 설치하며 Python 추가 의존성은 없습니다(cmake/C++/ffmpeg/curl 필요). 오디오는 처리 후 임시 파일과 함께 삭제됩니다. ‘얼터 호출 대기’를 켜면 6초 녹음 → 한국어 전사 → 호출어 확인을 반복합니다. ‘얼터, 회의 문서를 찾아줘’처럼 한 문장으로 말하세요. 호출되면 챗봇에 전달하지만 물리 기기·Flow는 최종 확인이 필요합니다. 전용 저지연 wake-word 엔진이 아니므로 처리 사이에 청취 공백이 있고, 상시 대기는 기본 꺼짐입니다. 페이지가 숨겨지면 마이크가 종료됩니다.
+## Data and access
 
-현재 Pi에 마이크가 없어 실제 사람의 음성/호출 인식률은 미검증입니다. 합성 한국어 음성을 실제 Pi 엔진으로 처리하는 것은 검증했습니다.
+- File and photo jobs keep checkpoints and content hashes in SQLite. Restarting resumes work and reuses unchanged extraction, subject and face results.
+- Original files stay on your drives. Local inference does not upload them to a model service. SmartThings needs Samsung's cloud; enabling ngrok sends requested web traffic through ngrok.
+- Port **11977** is for the configured LAN and the on-device panel. Port **8080** is the public entry point with password login, CAPTCHA and configurable failed-login blocking. Use HTTPS for Internet access.
+- `.env`, runtime databases, conversations, tokens, models and personal media are excluded from Git. Backups remain private.
 
-웹 전체의 동작 아이콘은 Lucide SVG이며 텍스트 설명과 함께 사용합니다. 색상은 currentColor로 라이트/다크 테마를 따릅니다. 아이콘·키보드 라이브러리는 로컬에서 제공하므로 CDN 연결이 필요하지 않습니다.
+## Documentation and development
 
-## 재부팅 후 실행·복구
+[Setup](docs/setup.md) · [한국어 설치](docs/setup.ko.md) · [Architecture / contributor map](readme-for-agent.md) · [한국어 개발 안내](readme-for-agent.ko.md) · [Photos](docs/photos.md) · [Indexing and access](docs/indexing-security.md) · [Validation](docs/acceptance.md)
 
-Pi 프로젝트 최상위 `Start-Alter.desktop`(Alter 시작 및 복구)을 실행하세요. 터미널에서는 `./start.sh` 또는 브라우저 없이 `./start.sh --no-browser`입니다. Windows 백업 폴더의 `Start-Alter.cmd`는 SSH로 같은 복구를 실행합니다(PC의 SSH 인증이 필요하며 비밀번호를 파일에 저장하지 않습니다).
+Python/FastAPI, SQLite FTS5, vanilla JavaScript, i18next and GNU gettext. Direct runtime dependencies are in `requirements.txt`; development tools are in `requirements-dev.txt`. See the contributor map for translation catalogs and tests.
 
-브라우저 창만 다시 열 때는 Pi 바탕화면의 **Alter 화면 열기**를 사용하세요. 기존 로그인 프로필로 내부 `11977/panel` 터치 대시보드를 엽니다. 세션이 만료됐으면 다시 로그인해야 합니다.
+## License
 
-서버·언어 모델·ngrok·OAuth·SMB는 부팅 자동 시작으로 등록되고, alter-recovery가 웹/모델 준비, 등록된 외장 드라이브 UUID, SMB 경로, 공개 HTTPS, 저장된 SmartThings 인증을 확인합니다. 재실행은 이미 실행 중인 서비스를 재시작하지 않습니다. 정상 부팅 후 클릭은 별도 관리자 인증 없이 점검·대시보드 열기를 수행합니다. 관리자가 서비스를 완전히 중지한 경우에는 Pi 계정 암호를 요청할 수 있습니다. 삼성에서 권한을 철회했거나 refresh token이 만료·손상된 경우 삼성 계정 재로그인은 필요합니다.
-
-기존 설치에 적용: `bash scripts/install-startup.sh`. 결과는 private `data/startup-status.json`, 부팅 로그는 `journalctl -u alter-recovery -b`에서 확인합니다. 전원 손실로 파일시스템·SD카드·DB가 손상된 경우 자동 초기화하지 않으며 백업 복구가 필요합니다.
-
-## 드라이브 식별과 화면 절전
-
-색인 폴더는 **파일시스템 UUID + 드라이브 내부 상대경로**로 식별합니다. 마운트 이름이나 /dev/sda 순서가 바뀌어도 같은 폴더/파일 ID를 유지합니다. USB 일련번호는 장치 정보이고 여러 파티션을 구별하는 색인 키는 아닙니다. 포맷으로 UUID가 바뀌면 새 볼륨이며, 동일 UUID의 복제 볼륨을 동시에 연결하면 오인 연결을 차단합니다.
-
-내장 DSI 디스플레이는 5분 동안 입력이 없으면 밝기1/31로 낮아지고 터치·키보드·마우스 입력 시 직전 밝기로 복원됩니다. 화면을 끄거나 서버를 중단하지 않습니다. Raspberry Pi Connect의 원격 입력도 활동으로 처리됩니다. 이미 설치된 swayidle과 기존 video 그룹 권한을 사용하며 별도 관리자 권한을 추가하지 않습니다.
-
-파일 검색·다운로드, AI 생성, 카메라 스트리밍, SmartThings 통신 등 서버 작업과 외부 PC의 대시보드 사용은 디스플레이 활동으로 계산하지 않습니다.
-
-색인과 SMB는 드라이브 화면의 별도 버튼으로 폴더를 선택합니다. SMB만 등록해도 검색 색인에 추가되지 않으며, 색인 등록 해제와 공유 해제는 서로 영향을 주지 않습니다. 공유 전용 볼륨도 UUID로 부팅 시 복구합니다. Windows 탐색기 주소창에 `\\127.0.0.1`를 입력하고 SMB 계정 `pi`로 로그인하세요. 네트워크 자동 검색은 Debian 패키지 `wsdd2`가 담당합니다.
-
-SMB 목록의 **설정 변경**으로 기존 공유 이름·폴더·권한을 불러온 뒤 **공유 적용**을 눌러 저장합니다. 체크 해제만으로 저장되지 않습니다. 탈거된 드라이브의 공유와 색인도 원본 접근 없이 등록 해제할 수 있습니다. `.env`의 `EXCLUDED_DIRECTORY_NAMES`에 쉼표로 폴더명을 지정하면 폴더 탐색·색인·파일 접근에서 제외합니다.
-
-
-## 상시 모션 감지
-
-측면 PERSONAL SPACE의 **상시 모션 감지**에서 얼굴·손바닥·주먹·브이·엄지척·엄지다운별 Flow를 선택합니다. 얼굴은 신원 인식이 아닌 얼굴의 존재 감지입니다. 같은 얼굴이 계속 보이는 동안 새로운 인물인지 구별하지 않습니다.
-
-각 항목은 유지 시간(0.3~60초), 재감지 대기(0.3~60초), 실행 완료 후 대기(3~3600초), 지속 감지 중 반복 실행 여부를 따로 저장합니다. 기본값은 1초 유지 후 한 번, 1.5초 사라지면 재감지 가능, 최소 실행 간격 5초입니다. 반복을 끄면 계속 보이는 동안 재실행하지 않습니다. 반복을 켜면 유지 시간 충족 후 실행하며 Flow 완료 뒤 지정 대기 시간이 지나면 다시 실행합니다. 짧은 감지 끊김은 새 이벤트로 취급하지 않지만 유지 시간은 다시 셉니다.
-
-**설정 저장 및 적용**으로 반영합니다. 브라우저를 닫아도 계속 감지하며, 활성 설정은 서버 재시작 후 복원됩니다. 미리보기는 선택적으로 켜고 영상은 자동 저장하지 않습니다. 감지 중지는 감지 자동화만 멈추며, 카메라 끄기는 촬영과 감지를 함께 중지합니다. 이미 시작된 Flow는 중간 취소하지 않습니다. 하나의 감지 Flow가 실행 중이면 추가 이벤트는 대기열에 쌓지 않고 생략합니다.
-
-기존 MediaPipe GestureRecognizer와 BlazeFace Short Range를 함께 사용합니다. `python scripts/install-vision.py`가 공식 가중치를 SHA256 검증 후 설치합니다. 짧은 거리(얼굴 약 2m 이내)·조명·손의 방향에 영향을 받으며 실제 환경의 오탐률을 보장하지 않습니다. 설정 저장만으로 Flow를 시험 실행하지 않습니다.
-
-## 사진 관리
-
-측면 **사진 대상 폴더**에서 사진 전용 폴더를 등록합니다. 파일 색인과 SMB 공유와는 독립적입니다. 촬영 월·폴더 앨범·날짜 범위 안/밖·다중 주제·이름을 붙인 얼굴 묶음으로 사진/영상/Live Photo를 찾고 웹에서 봅니다. 개요에서 처리 진행률과 CPU/RAM 사용률·CPU 온도가 자동 갱신됩니다. 분류는 Pi CPU의 CLIP FP32와 YuNet/SFace로 처리하며 자동 주제와 얼굴 묶음을 수정할 수 있습니다. 정확도와 동영상 표본/프록시 제한, 설치·API는 [사진 관리 안내](docs/photos.md)를 참조하세요. GPU는 Linux V3D 드라이버의 실제 활동 시간을 이용해 연산·렌더링·타일 준비·텍스처 엔진별 사용률을 표시합니다. 큰 숫자는 가장 바쁜 엔진의 사용률이며 합산 사용률은 아닙니다. 첫 측정과 계측 미지원은 0%와 구분합니다.
-
-## Files · 카메라 방향 · 사진 대화
-
-**Files → 폴더 탐색**은 파일 색인 대상으로 등록한 폴더만 트리로 열며 PDF, 텍스트·코드, 사진, 동영상을 바로 미리 봅니다. 사진 전용 폴더와 SMB 전용 폴더를 자동으로 포함하지 않습니다. 파일을 변경하는 기능은 없습니다.
-
-**설정 → 동작 인식 카메라 방향**에서 시계 방향 0/90/180/270도 회전과 좌우·상하 반전을 저장합니다. 미리보기·얼굴/손동작 인식·녹화에 같은 방향을 적용하고 재부팅 후에도 유지합니다. 녹화 중에는 변경할 수 없습니다.
-
-**얼터와 대화**에서 “건물이 나온 사진을 찾아줘”, “사람들에서 저장한 이름이 나온 사진을 찾아줘”처럼 사진 주제·사람 이름·촬영 날짜로 검색합니다. 실제 조회 결과와 미리보기 카드를 표시합니다. 자유로운 이미지 질의응답은 아니며 이름은 사용자가 먼저 지정해야 합니다. RAM 온도는 해당 센서가 없으면 측정 불가로 표시합니다.
-
-
-## 색인 진행률과 ETA (2026-10-24)
-
-개요의 파일/사진 카드에 처리 수 / 전체 대상 수, 백분율, 예상 남은 시간을 5초마다 표시합니다. 사전 집계는 등록된 루트만 읽으며 제외 디렉터리·숨김 항목·심볼릭 링크를 진입 전에 건너뜁니다. 집계 중에는 전체가 아직 확정되지 않았으므로 진행 막대와 ETA를 미확정으로 표시합니다. 탐색 도중 파일이 추가·삭제되면 이번 스캔의 분모와 실제 처리 수가 달라질 수 있으며 다음 스캔에서 갱신됩니다.
-
-파일은 이번 검사에서 확인한 파일(변경 없는 파일 포함) / 사전 발견 파일 수입니다. 검색 DB 반영은 별도 단계로 표시하며 이 단계의 ETA는 계산하지 않습니다. 기존 검색 가능한 파일 수는 큰 숫자로 계속 표시합니다.
-
-사진은 두 단계입니다. 파일 정보 확인은 확인한 미디어 파일 / 사전 발견 미디어 파일 수이며 이 단계의 ETA는 **파일 정보 확인 단계**의 예상치입니다. 발견 중 조기 분류에 든 시간도 이 단계 측정에 포함됩니다. 주제·얼굴 분류로 전환하면 Live Photo 중복 영상을 제외한 항목 수가 분모이고, 기존 완료 항목 + 이번 시도 항목이 분자입니다. 오류 항목은 확인 필요 수로 따로 표시합니다. ETA는 해당 단계의 실제 경과 시간과 처리 표본으로 계산하며 전체 작업의 고정 마감 시간이 아닙니다. 사진/영상 크기·모델 초기화·동시 작업에 따라 변합니다. 최소 3개/2초 이전에는 계산 중, 일시정지·오류·작업자 단절 시 ETA 대기로 표시합니다.
-
-## 로그인 보호 설정과 재시작 가능한 색인
-
-**설정 → 접속 · 보안**에서 실패 허용 횟수(1~20회), 집계 시간(1~60분), 차단 시간(1~1,440분)을 저장합니다. 기본값은 **10분 동안 5회 실패 시 10분 차단**입니다. 변경은 다음 시도부터 적용되며, 진행 중인 차단은 기존 종료 시간까지 유지합니다. 실패 기록과 설정은 DB에 보관되어 재시작으로 초기화되지 않습니다. 외부8080은 일회용 이미지 CAPTCHA와 ID/PW, 내부11977은 ID/PW를 사용하며 세션도 분리됩니다.
-
-파일·사진 모두 `scan_jobs / scan_dirs / scan_entries`에 작업 목록과 완료 위치를 저장합니다. 파일 크기·정밀 수정/변경 시각을 먼저 대조하고 변경 또는 3일 경과 시 SHA-256을 확인합니다. 해시가 같으면 기존 텍스트/주제/얼굴 결과를 재사용합니다. 모델·추출기 버전이 달라진 결과만 다시 계산합니다. 기존 DB에 해시가 없으면 최초 한 번 기준 해시를 생성하므로 큰 드라이브는 오래 걸릴 수 있지만, 기존 검색 결과를 지우거나 전부 재분류하지 않습니다.
-
-배포·포트포워딩·DB 구조·중단 복구의 세부 사항은 [색인과 접속 보호](docs/indexing-security.md)를 참조하세요.
-
-## NTFS 유지보수 중 파일 접근
-
-Windows에서 압축 해제를 진행하는 동안에는 PC 전용 임시 읽기 창으로 완료 파일을 탐색·미리보기·다운로드할 수 있습니다. 기존 변환 기록을 사용하며 원본을 수정하지 않습니다. 연결 해제·공유 복구 단계에는 임시 접근이 자동 종료됩니다. 실행 방법과 검증 범위는 [NTFS 유지보수 안내](docs/ntfs-maintenance.md#변환-중-임시-읽기-창)를 참조하세요.
+Alter code and original enclosure design are under [GPL-3.0](LICENSE). Model weights, vendored libraries, official hardware references and Raspberry Pi trademarks retain their respective terms. This is an independent project, not an official Raspberry Pi or Samsung product. [Asset credits](docs/assets.md).

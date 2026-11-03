@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from . import db, oauth
+from .i18n import gettext as translate, language, request_language
 
 
 @asynccontextmanager
@@ -19,6 +20,7 @@ app = FastAPI(docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
 
 @app.middleware("http")
 async def headers(request, call_next):
+    language.set(request_language(request))
     allowed = {"127.0.0.1","localhost",urlparse(oauth.REDIRECT_URI).hostname}
     if request.url.hostname not in allowed:
         return HTMLResponse("Unknown callback host",status_code=400)
@@ -47,9 +49,10 @@ def start(ticket: str):
 @app.get("/oauth/callback")
 def callback(request: Request, state: str="", code: str|None=None, error: str|None=None):
     connected=oauth.finish(state,request.cookies.get("alter_oauth_binding",""),code,error)
-    title="SmartThings 연결 완료" if connected else "SmartThings 연결이 취소되었습니다"
-    message="대시보드에서 기기 목록을 불러올 수 있습니다." if connected else "대시보드에서 다시 연결할 수 있습니다."
-    response=HTMLResponse(f'<!doctype html><html lang="ko"><meta charset="utf-8"><title>{title}</title>'
-                          f'<h1>{title}</h1><p>{message}</p><a href="{html.escape(oauth.RETURN_URL,quote=True)}">Alter 대시보드로 돌아가기</a></html>')
+    title=translate("SmartThings 연결 완료" if connected else "SmartThings 연결이 취소되었습니다")
+    message=translate("대시보드에서 기기 목록을 불러올 수 있습니다." if connected else "대시보드에서 다시 연결할 수 있습니다.")
+    back=translate("Alter 대시보드로 돌아가기")
+    response=HTMLResponse(f'<!doctype html><html lang="{language.get()}"><meta charset="utf-8"><title>{title}</title>'
+                          f'<h1>{title}</h1><p>{message}</p><a href="{html.escape(oauth.RETURN_URL,quote=True)}">{back}</a></html>')
     response.delete_cookie("alter_oauth_binding",path="/oauth",secure=True,httponly=True,samesite="lax")
     return response

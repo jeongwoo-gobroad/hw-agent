@@ -29,3 +29,7 @@
 .panel-account{margin:0 0 12px;color:var(--muted);font-size:13px}.panel-account summary{cursor:pointer;padding:8px}.panel-account .card{margin-top:8px}.touch-panel #smart-devices{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}.touch-panel .device-toolbar{margin-top:12px}
 
 .touch-panel #notice{position:fixed;top:70px;right:24px;max-width:480px;margin:0;box-shadow:0 4px 20px #0002}
+
+/* Leave room for either the four-row Korean or five-row English keyboard. */
+.touch-panel.keyboard-open .chat-main { height:calc(100dvh - var(--keyboard-height,300px) - 185px); min-height:0; margin-bottom:var(--keyboard-height,300px); }
+.touch-panel.keyboard-open #messages { min-height:0; }

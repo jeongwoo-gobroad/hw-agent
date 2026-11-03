@@ -32,10 +32,10 @@ def main():
                 yield from mounts(item.get("children", []), tran)
         if not path.is_dir() or not any(path.is_relative_to(Path(m).resolve()) for m in mounts(tree["blockdevices"])):
             raise ValueError("Only mounted external storage can be shared")
-        text = (f"[Alter-{name}]\npath = {path}\nvalid users = pi\n"
+        text = (f"[Alter-{name}]\npath = {path}\nvalid users = @USER@\n"
                 f"read only = {'yes' if data.get('readonly', True) else 'no'}\n"
                 "guest ok = no\nfollow symlinks = no\nwide links = no\n"
-                "force user = pi\ncreate mask = 0600\ndirectory mask = 0700\n")
+                "force user = @USER@\ncreate mask = 0600\ndirectory mask = 0700\n")
         with tempfile.NamedTemporaryFile(mode="w", dir=folder, delete=False) as f:
             f.write(text)
             temp = Path(f.name)

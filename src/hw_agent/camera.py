@@ -1,3 +1,4 @@
+from .i18n import gettext as translate
 import io
 import json
 from pathlib import Path
@@ -38,10 +39,10 @@ class Camera:
     def set_orientation(self, rotation=0, mirror_horizontal=False, mirror_vertical=False):
         if type(rotation) is not int or rotation not in {0, 90, 180, 270} or any(
                 type(v) is not bool for v in (mirror_horizontal, mirror_vertical)):
-            raise HTTPException(400, "회전은 0/90/180/270도, 반전은 켜기/끄기로 지정하세요.")
+            raise HTTPException(400, translate('회전은 0/90/180/270도, 반전은 켜기/끄기로 지정하세요.'))
         with self.lock, self.orientation_lock:
             if self.recording:
-                raise HTTPException(409, "녹화를 중지한 뒤 카메라 방향을 변경하세요.")
+                raise HTTPException(409, translate('녹화를 중지한 뒤 카메라 방향을 변경하세요.'))
             settings = dict(rotation=rotation, mirror_horizontal=mirror_horizontal, mirror_vertical=mirror_vertical)
             db.set_state("camera_orientation", json.dumps(settings))
             self.orientation = settings
@@ -80,7 +81,7 @@ class Camera:
             if hasattr(self, "capture_thread") and self.capture_thread.is_alive():
                 self.capture_thread.join(timeout=5)
                 if self.capture_thread.is_alive():
-                    raise HTTPException(409, "카메라 종료 중입니다. 잠시 후 다시 켜세요.")
+                    raise HTTPException(409, translate('카메라 종료 중입니다. 잠시 후 다시 켜세요.'))
             try:
                 from picamera2 import Picamera2
                 self.device = Picamera2()
@@ -148,19 +149,19 @@ class Camera:
     def start_recording(self, root_id):
         with self.lock:
             if self.recording:
-                raise HTTPException(409, "이미 녹화 중입니다.")
+                raise HTTPException(409, translate('이미 녹화 중입니다.'))
             roots = db.rows("SELECT * FROM roots WHERE id=?", (root_id,))
             if not roots:
-                raise HTTPException(400, "등록된 저장 폴더를 선택하세요.")
+                raise HTTPException(400, translate('등록된 저장 폴더를 선택하세요.'))
             base = storage.root_path(roots[0])
             if shutil.disk_usage(base).free < 512 * 1024**2:
-                raise HTTPException(409, "녹화 시작에는 512MiB 이상 여유 공간이 필요합니다.")
+                raise HTTPException(409, translate('녹화 시작에는 512MiB 이상 여유 공간이 필요합니다.'))
             self.start()
             target = base / "Alter-recordings"
             target.mkdir(exist_ok=True)
             target = target.resolve()
             if not target.is_relative_to(base):
-                raise HTTPException(403, "녹화 경로가 허용 폴더 밖에 있습니다.")
+                raise HTTPException(403, translate('녹화 경로가 허용 폴더 밖에 있습니다.'))
             name = time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
             self.encoder = subprocess.Popen([
                 "ffmpeg", "-v", "error", "-nostdin", "-f", "image2pipe", "-framerate", "10",

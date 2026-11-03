@@ -9,9 +9,9 @@ import paramiko
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--host", default="127.0.0.1")
-parser.add_argument("--user", default="pi")
-parser.add_argument("--fingerprint", default="configure-host-fingerprint")
+parser.add_argument("--host", required=True)
+parser.add_argument("--user", required=True)
+parser.add_argument("--fingerprint", required=True)
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
 

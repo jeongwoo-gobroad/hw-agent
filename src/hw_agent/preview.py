@@ -1,3 +1,4 @@
+from .i18n import gettext as translate
 import hashlib
 from pathlib import Path
 import subprocess
@@ -56,7 +57,7 @@ def preview(path, record):
     if suffix in {".mov", ".mp4", ".mkv", ".avi", ".m4v"}:
         target = CACHE / (key + ".mp4")
         if path.stat().st_size > 2 * 1024**3:
-            raise HTTPException(413, "2GiB 초과 영상은 다운로드로 확인하세요.")
+            raise HTTPException(413, translate('2GiB 초과 영상은 다운로드로 확인하세요.'))
         with lock:
             if not target.exists():
                 temp = CACHE / (key + ".part.mp4")
@@ -68,7 +69,7 @@ def preview(path, record):
                     temp.replace(target)
                 except subprocess.SubprocessError:
                     temp.unlink(missing_ok=True)
-                    raise HTTPException(422, "영상 변환 실패 또는 시간 초과")
+                    raise HTTPException(422, translate('영상 변환 실패 또는 시간 초과'))
                 clean_cache()
         return target, "video/mp4"
     # 문서는 추출 텍스트만 표시해 활성 콘텐츠를 실행하지 않는다.

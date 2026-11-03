@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Start and recover Alter
+Name[ko]=Alter 시작 및 복구
+Comment=Start services and check saved connections
+Comment[ko]=서버와 저장된 연결을 확인합니다
+Exec=@ROOT@/start.sh
+Path=@ROOT@
+Terminal=true
+Icon=system-run
+Categories=Utility;

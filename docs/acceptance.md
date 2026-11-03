@@ -1,104 +1,27 @@
-# 실기기 검증 기록
+# Validation scope / 검증 범위
 
-## 2026-11-01 저장장치 복구와 장치 초기화
+The reference system runs on Raspberry Pi 5 8GB. Tests use disposable fixtures unless explicitly identified as device checks. Historical benchmark details remain in [models.md](models.md); they are not a claim of universal performance.
 
-- NTFS 본 변환·예정된 접근 거부 재시도 종료: 스트림 156,086건·폴더 25,730건 완료, 대기 0건, 보안 격리 예외 1건. 자세한 범위는 [유지보수 기록](ntfs-maintenance.md)을 참고합니다.
-- Windows 대상 연결 부재, Pi 단독 마운트, 정상 재부팅과 SSH 복귀를 확인했습니다. 마지막 부트로더 업데이트 후 Windows SMB 합성 파일 8,252바이트의 생성·읽기·추가 저장·삭제 및 내용 일치를 확인했습니다.
-- 공식 7인치 패널을 DSI1, IMX708 카메라를 CAM0에 명시하여 두 드라이버의 바인딩을 확인했습니다. EEPROM 2026-09-25 정식 버전 적용 뒤 사용자가 디스플레이의 깜빡임·잔상과 카메라의 파란 영상이 모두 개선됐다고 확인했습니다. 원격 영상만으로 물리 화면을 판정한 결과가 아닙니다.
-- 부팅 복구에서 큰 색인 DB 전체 검사를 분리하고 단계별 상태 저장을 추가했습니다. 웹·모델·등록 드라이브·터널·SmartThings 준비 검사가 종료 코드 0으로 끝났습니다. SmartThings 확인은 연결 조회이며 실제 기기 조작 시험은 아닙니다. 기존 파일·사진 DB와 처리 큐를 유지했습니다.
-- Pi에서 복구 검사 8개와 밝기 상태 보존 검사 1개가 통과했습니다. 운영 밝기 타이머는 300초이며 별도 무동작 10초 관측에서 Wayland idle 이벤트가 발생했습니다. 325초 관측 중 사용자가 Pi 화면/화면 공유를 조작했다고 확인했으므로, 이 관측을 연속 5분 무입력의 성공 또는 실패로 판정하지 않습니다. 일반 서버 요청은 입력 이벤트에 연결하지 않습니다.
-- PC Chrome의 Raspberry Pi Connect 화면 공유에서 바탕화면 **Alter 화면 열기**를 더블 클릭하고, 추가 실행 확인창 없이 기존 로그인 프로필의 11977/panel 스마트홈 화면이 열리는 것을 확인했습니다. 바로가기 두 파일의 desktop 형식과 설치 스크립트 문법도 통과했습니다. 이후 화면 공유를 연결 해제했으며 Pi 대시보드 창은 열어 뒀습니다.
+기준 장비는 Pi 5 8GB입니다. 합성 시험과 실제 장비 확인을 구분하며 모델 성능 조건은 별도 문서를 따릅니다.
 
-기준 2026-10-20. 실제 Pi5 8GB, 테스트 USB SanDisk FAT32, IMX708, Windows Chrome. 결과 파일은 Pi data에 비공개 보관하며 사용자 기기 식별자/토큰/영상은 Git에 공개하지 않습니다.
+| Area | Evidence and limits |
+|---|---|
+| Translation and install templates | EN/KO request isolation, catalog interpolation, English photo/date queries, two Linux account/subnet renderings and invalid-account rejection |
+| Access and OAuth | Login blocking, scoped sessions, CSRF/root boundaries, one-time state, token encryption/refresh and allowed-action checks using fixtures |
+| Files and photos | Synthetic folder/preview/search, independent roots, metadata filters, stored person labels and checkpoint reuse; not a comprehensive recognition-accuracy benchmark |
+| UI | Real browser checks on the running app. Public screenshots use a separate sample dataset; their files, devices and labels are examples |
+| Hardware | A working assembled device is pictured. CAD mesh/collision checks do not certify printer fit, cable strength, stability or cooling |
+| SmartThings | OAuth and selected device control were exercised on the reference installation. Another account requires its own registration/plan and authorization |
+| Voice | Engine and synthetic Korean speech tested; microphone/environment-specific recognition and wake false-positive rates are not established |
+| LLM/GPU | CPU completed the recorded throughput test; Vulkan warmup timed out. GPU metrics and successful GPU model loading do not prove faster inference |
 
-## 통과
+Fresh-OS installation, every printer/material, all storage hardware and all SmartThings regions/plans have not been exhaustively tested. Do not substitute a health endpoint, mock response or screenshot for the corresponding hardware/API verification.
 
-- `tests/test_boundaries.py`: 9개. 명시 날짜/확장자 보완, symlink 탈출, 오프라인 활성 색인 보존, 72시간 재추출, 생성일/ctime 구분, Flow 실패/중복, 비밀번호 변경 세션 무효화, SmartThings429/401 처리.
-- `tests/test_oauth.py`: 4개. 잘못된 브라우저 바인딩, state/ticket 재사용, 로그아웃 세션, 암호화와 갱신, callback 앱 API 제한.
-- `tests/live_smoke.py`: 최종 결과44항목(43개 assertion + 모델 mode 관측). 비인증 차단/로그인/CSRF/Origin, 외장 폴더 등록, 한국어 TXT/DOCX/HWPX BM25, 날짜/확장자/TF-IDF, 미리보기/다운로드, 생성·수정·삭제 추적, Flow/중복 요청, 대화 저장, 실제 카메라 스트림/6초 녹화/ffprobe, MediaPipe 초기화, 로그아웃.
-- `tests/live_storage.py`: 실제 해제/UUID 재마운트, 오프라인 메타데이터 보존/다운로드 차단, SMB 경로 복원. FAT32 한글 파일명 문제가 발견되어 utf8=1 옵션으로 수정 후 재검증.
-- Windows SMB 접속, 디렉터리 조회, 읽기 전용 쓰기 거부. Pi smbclient로 별도 쓰기 허용 테스트 공유에 업로드→다운로드 내용 일치→테스트 파일 삭제까지 성공하고 테스트 공유를 제거했습니다.
-- 실제 구형 HWP pyhwp upstream fixture에서 한국어 텍스트 추출. 스캔 PDF OCR/모든 HWP 변종 지원 시험은 아님.
-- 실제 삼성 OAuth 인가/교환, 27개 기기 목록, 허용된 메인 등 on→off→on 상태 확인, refresh token 실제 회전과 이후 API 성공.
-- Chrome 로그인, 한국어 검색/문서 미리보기/Flow 생성, SmartThings 연결 표시와 메인 등 카드, HEIC320×240 디코딩, MOV960×720 2초 영상 readyState4, 카메라640×480 스트림 수신.
-- 커널 memory cgroup 활성화 후 재부팅, 웹/모델 서비스 복구. 기존 팬 서비스 유지.
+## Release verification — 2026-11-04
 
-## 한계와 남은 검증
+- 55 focused tests passed on the Pi across translation, OAuth, login policy, generation, explorer/camera, photos, recovery and access boundaries. Translation tests were rerun after the final catalog changes.
+- Chrome checked all ten English navigation pages, file/code preview, photo preview, both themes and both 1280 × 720 touch keyboards. A 390 px dashboard check found no document-width overflow. Native browser controls can retain the OS language.
+- The production CPU model answered a synthetic greeting in each language through the streaming endpoint. English: 2 answer chunks, first chunk 26.02 s, total 43.34 s. Korean: 4 chunks, first chunk 23.81 s, total 42.51 s. These are single-request checks under concurrent indexing, not a throughput benchmark. Test conversations were removed.
+- All 14 published STL files match the original design exports, have watertight meshes and positive volume, and fit within 220 mm in X/Y. These checks do not replace print-fit tests.
 
-실제 사람의 다섯 손동작 인식률과 오탐은 시험하지 않았습니다. 제스처 엔진 초기화가 동작 정확도 검증을 대신하지 않습니다. Pi 화면 자동 시작 프로세스는 설정했으나 터치 입력/실화면 usability는 확인하지 않았습니다. 초기 검증 당시 마이크가 없어 음성 기능은 미구현이었으며, 이후 구현 상태는 아래 터치 패널·음성 항목을 참고하세요.
-
-HEIC/MOV는 합성 fixture 기반입니다. 실제 Apple 촬영 원본의 HDR/회전/다양한 코덱 조합은 별도 검증 대상입니다. DOCX/HWPX 간단 XML fixture는 전체 문서 포맷 호환성 보장이 아닙니다. 장시간 동시 부하/전원 차단/대규모 코퍼스/장기 토큰 만료 시험도 남았습니다.
-
-모델 세 후보의 제한된 비교는 models.md를 참고하세요. 자동 시험의 `chat returns search cards`는 자료형 검사이므로 모델 답변 품질의 충분조건이 아닙니다. Chrome에서 실제 검색 결과 카드도 별도로 확인했습니다. 테스트에서 생성한 대화/Flow와 USB Alter-test 데이터는 기능 확인용으로 남아 있습니다.
-
-추가 실증: 허용 조명에서 기기 변경→2초 대기→원상복구 3단계 Flow 완료. 카메라가 실행 중인 상태에서 Qwen4B가 “메인 등 꺼줘”를 실제 연결 기기의 확인 제안으로 반환(44.31초), 자동 실행하지 않음. 이후 카메라를 종료했습니다.
-
-2026-10-20 ngrok 전환: 무료 계정 고정 개발 도메인/HTTPS, 에이전트 재시작 시 동일 주소 유지, 공개 health200/API404/위조 callback400, Chrome 안내 페이지→삼성 재인가→ngrok 연결 완료, 기기 조회 성공. alter-ngrok 자동 시작 활성화, 기존 임시 Cloudflare 서비스 중지.
-
-외부 대시보드 검증(2026-10-20): Windows에서 tests/live_external.py를 공개 ngrok HTTPS URL 대상으로 실행하여16개 검사 통과. ID/PW, Secure/HttpOnly/SameSite 쿠키, 비인증 API401, CSRF/외부 Origin403, 한국어 파일 검색·텍스트 미리보기, 실제 MJPEG JPEG 프레임 수신, 로그아웃 후 카메라401 포함. Chrome에서도 외부 URL 로그인, “회의” 검색3건, 문서 내용, 카메라 naturalWidth640/naturalHeight480 확인. 시험 후 카메라 종료. 동일 Windows 네트워크에서 공개 터널을 경유한 검증이며 별도 이동통신 회선 시험은 하지 않았습니다.
-
-2026-10-20 스트리밍·UI 검증: 공개 ngrok 경로에서 실제 모델 delta 39회, 첫 delta 4.77초, 전체 완료 28.78초, 사용자/답변 2개 DB 저장 확인. 이 값은 한 번의 합성 요청 관측이며 속도 보장이 아닙니다. Chrome 대화창에서도 7초와16초 시점에 문장이 늘어나는 것을 확인했습니다. 개요·파일·대화·드라이브·스마트홈/Flow·카메라·설정을 순회하며 검색 초기 표시/날짜 오류/작은 파일 크기, 활성 대화, Flow 취소·입력 라벨, 장치 이름, 카메라 비활성 버튼과 빈 화면을 개선했습니다.
-
-최종 재검사: generation 3개, boundaries 9개, OAuth 4개 테스트 통과. 외부 HTTPS 16개 검사 재통과. Chrome 생성 중단 후 새로고침에서 부분 답변이 저장되지 않은 것을 확인했고 로그인·로그아웃과 테마 선택 유지도 확인했습니다. 터치 패널 URL의 스마트홈 진입은 Chrome에서 확인했으나 실제 터치 하드웨어 검증은 아닙니다.
-
-터치 패널·음성 추가 검증(2026-10-20): Pi의 arecord 목록에서 capture 하드웨어 없음 확인. whisper.cpp v1.8.3 ARM64 빌드와 tiny 다국어 모델 설치. Microsoft Heami의 합성 ‘얼터, 회의 문서를 찾아줘.’ WAV를 공개 HTTPS API로 보내 실제 Pi에서 ‘얼터. 회의 문서를 찾아줘.’로 전사(7.06초). 이는 실제 마이크/사람 발화 정확도 검증이 아닙니다. voice 단위 검사4개(미설치/손상·크기 제한/무음/동시 요청), 기존 경계9개 통과. Chrome 팝업 키보드의 ㅇ→ㅏ→ㄴ 입력으로 ‘안’ 조합 확인. 실제 DSI 터치 입력과 호출 대기의 잡음·오탐·장시간 운용은 미검증입니다.
-
-Raspberry Pi Connect의 기존 screen-sharing 탭으로 실제 Pi Chromium을 조작했습니다. 잠긴 키링 안내를 취소하고 로그인, /panel 진입 및 1280×720 화면에서 챗봇/키보드 동시 표시를 확인했습니다. 로그인 시 /panel 복귀 누락을 수정했습니다. 실제 터치 손가락 시험과는 구분되는 원격 화면/마우스 검증입니다.
-
-Pi 화면 공유에서 다운로드 폴더의 합성 WAV를 실제 Chromium 파일 선택기로 열어 음성 전사 경로도 실행했습니다. 브라우저 마이크 녹음 경로는 장치 부재로 별도 검증이 필요합니다.
-
-시작·복구 검증(2026-10-20): 실제 Pi 정상 재부팅 후 새 boot ID 확인. 부팅 복구 서비스가22:23:14에 시작해22:24:04에 성공 종료. 웹/모델/ngrok/SMB/SmartThings27개 기기 모두 준비. USB는 /mnt/alter에서 /media/pi/ESD-USB로 바뀌었고 공유 경로가 복원됐습니다. 웹·모델·ngrok을 SIGKILL로 비정상 종료한 뒤 systemd 재시작1회 및 모든 준비 상태 복구 확인. 다시 start.sh를 실행해도 세 서비스 PID가 바뀌지 않음 확인. 물리적 전원 강제 차단 및 SD카드 손상 복구 시험은 하지 않았습니다.
-
-UUID 스키마 변경 전 private data/pre-volume-identity.sqlite3 백업. 기존 파일10개 ID/root/상대 키가 변경 전후 동일하고 모든 파일 경로 및 같은 폴더 재등록 시 ID 유지 확인. 볼륨 식별·마이그레이션 단위 검사4개, 기존 경계9개, 복구3개 검사 대상.
-
-위 볼륨4개·경계9개·복구3개와 디스플레이1개 검사가 모두 통과했습니다. 실제 백라이트는 임시 5초 타이머로15→1을 확인하고 동일 복원 스크립트로1→15를 확인했습니다. 운영 서비스의300초 설정과 실행 상태를 확인했습니다. 전체5분 무입력 및 실제 터치에 의한 복원은 완료 검증으로 주장하지 않으며 사용자가 일상 사용 중 확인하기로 했습니다. 서버 소스에는 밝기 제어/idle reset 호출이 없고, 화면 서비스는 Wayland 입력을 관찰하도록 분리되어 있습니다.
-
-2026-10-20 SMB 선택 분리: Chrome에서 별도 색인/SMB 버튼과 독립 폴더 탐색·공유 대상 선택 확인. 볼륨 테스트5개(공유만 등록, 공유 제거 시 색인 유지, 색인 제거 시 공유 유지 포함), 복구4개(공유 전용 UUID 마운트 포함) 통과. Windows TCP445 성공, pi 인증 후 net view 공유 목록과 기존 연결 공유의 항목13개 조회 성공. Windows Private 및 검색 서비스 실행 확인. Pi wsdd2 설치/enable/active 확인. 별도 UDP probe에서는 응답을 관측하지 못했으며 Windows 탐색기 네트워크 목록의 자동 표시는 아직 확인되지 않았습니다. 직접 UNC 접속은 검증 완료입니다. 기존 공유/색인 등록은 유지했습니다.
-
-2026-10-21: 탈거된 실제 테스트 USB의 공유1개/색인 root1개를 원본 접근 없이 해제했습니다. 경계 테스트12개 통과: 제외 디렉터리 하강 차단, 추출 도중 root 삭제 시 재게시 차단, 오프라인 공유 삭제가 경로를 resolve하지 않음 포함. 현재 실제 공유 최상위에서 Windows raspberrypi 경유 신규 시험 파일 생성/append/덮어쓰기/이름 변경/삭제 모두 성공했고 시험 파일을 제거했습니다. IP 주소 경유 생성/삭제도 성공. 볼륨은 ntfs3 rw이며 최상위 디렉터리의 NTFS 압축 비트는 설정되어 있었습니다. 기존 사용자 파일은 변경하지 않았고 전체 압축 해제도 하지 않았습니다. 원래 사용자 쓰기 실패는 현재 최상위에서 재현되지 않았습니다. 임시 공유 권한 전환 검사는 Windows 네트워크 이름 캐시 오류로 완료되지 않았으며 강제 close-share 변경은 채택하지 않았습니다.
-
-2026-10-24 상시 감지: PresenceGate/설정 10개, 실서비스 인증·CSRF·6개 매핑·실카메라 API 11개 통과. 공식 얼굴/엄지척/브이/주먹 이미지 및 blank 음성 사례, 얼굴→장치 명령 없는 지연 Flow 실행 확인. 손바닥·엄지다운의 실제 사람 시연 정확도는 별도 확인 필요. 두 비전 모델과 Qwen3.5-4B Q4_K_M 동시 실행에서 정확히 2048토큰 생성(831.35초), 비전2326프레임, 두 서비스 OOM/restart 0회. 웹+비전 peak432586752B, LLM peak4156473344B, 최소 MemAvailable3801392KiB. Chrome 설정 저장 및 서비스 재시작 후 유지 확인. 기본 반복 끔으로 복원, 실기기 Flow 매핑은 비워 둠.
-
-2026-10-24 사진 관리: 독립 폴더·오프라인 해제·UUID 재마운트·포함/제외 날짜·다중 주제 수정·경계·합성 제외 폴더·Live 증분 연결·얼굴 이름/분리의 단위 검사8개 통과. 외장드라이브 전용 시험 폴더에서 사진/Live/영상5항목, 실제 CLIP/YuNet/SFace 처리, 같은 얼굴3항목 묶음, 이름저장, 인증/CSRF, MOV 프록시, MP4 Range206, 파일 roots/SMB 불변 확인. 사진 작업자 peak626638848B, OOM/restart0. 실제 개인사진을 선택해 색인하지 않았으며, Apple 원본 식별자/개인사진 인식 정확도/장시간 대량 라이브러리 부하는 미검증.
-
-사진 최종 Chrome HTTPS 검증: 서류 주제1개, 날짜 범위 밖0개/안6개, 이름 있는 얼굴 묶음4개, HEIC 미리보기, Live MOV 재생 완료(currentTime=duration=2초, readyState4, error=null), 라이트/다크 테마 확인. 처리 중 진행 수 갱신과 썸네일 갱신 확인. 보호 경로는 실제 접근하지 않았고 격리된 합성 제외 폴더로 경계를 검사했습니다. 별도 외장 시험 폴더와 사진 등록은 제거하여 사용자 사진 폴더 등록0개로 인계합니다. 복구4개 회귀검사도 통과했습니다.
-
-최종 수정 후 사진 검사9개(H.264 MP4 직접 제공/비호환 MP4 프록시 변환 포함), 기존 접근 경계12개 통과. 사진 worker는 대기 시 약46MiB로 모델 메모리를 반환했습니다.
-
-얼굴별 대표 이미지를 정렬된112×112 얼굴 썸네일로 보완했습니다. 실제 SFace 출력 확인 및 얼굴 썸네일 제공/등록해제 후 제거를 포함해 사진 검사10개 통과.
-
-
-2026-10-24 후속 실사진 검증: 등록된 사진 루트에서 검증했다. 실제 여행 사진18장 표본에서 int8 복합 문장 분류의 건물 누락/동물 오탐을 확인했다. FP32 CLIP와 주제별 문장 비교로 변경해 그중10장 비교에서 건물 분류 및 기존 동물 오탐 개선을 확인했다. 별도 추론 peak866MiB. 실제 얼굴10개를 눈으로 점검했고, 간판 글자1개 오탐(검출점수0.856) 때문에 YuNet 기준을0.87로 조정했다. 작은/어두운 동일인 얼굴이 여러 묶음으로 분리될 수 있으며 수동 수정이 필요하다. 이 표본 확인은 전체 라이브러리 정확도 측정이 아니다. 그림·포스터 속 얼굴도 검출 대상이다.
-
-Chrome과 Pi 실제 API: Files 등록 루트 탐색, 코드 text/plain, PDF 브라우저 뷰어, 이미지200, 동영상 readyState4 및960x720 디코딩, 미등록루트404·상위경로403·비인증401 확인. 카메라 설정90도 적용 후 실제480x640 출력 확인, 원래0도로 복원, 잘못된45도400. 대화에서 ‘건물이 나온 사진을 찾아줘’가 실제 로컬 모델 응답으로59개 일치/8개 사진 카드를 반환했고 카드에서 실제1600x1065 사진 미리보기를 열었다. 결과 수는 색인 진행에 따라 증가한다. CPU 센서61도대, RAM 센서 미노출 확인. 새 경계/카메라/사진검색7개와 기존 사진10개 회귀 검사 통과. 개인 원본/점검 이미지/얼굴 특징은 커밋하지 않는다.
-
-최종 회귀: Pi에서 test_*.py 60개 통과. 이전 사진 테스트의 임시 photo_roots가 복구 테스트에 남던 테스트 격리 문제도 정리했다. 실제 얼굴 묶음에 일시적인 검증 이름을 붙여 검색1건을 확인한 후 원래 이름으로 복원했다. 파일 미리보기용으로 생성한4개 파일과 전용 시험 폴더는 제거했다. FP32 사진 분류와 기존 서비스 실행 중 photo cgroup OOM/oom_kill0을 확인했으나 장기 부하/전체 사진 정확도를 보장하는 시험은 아니다.
-
-2026-10-24 진행률/ETA: Pi 회귀62개 통과. 파일 사전 집계와 사진 단계별 전체/완료/백분율/ETA API·대시보드 추가. 실제 사진9500개 상태 조회에서 Live Photo 제외 조인의 반복 전체 검색으로 발생한 지연을 발견하여 photos(root,live_relative) 색인을 추가했다. 추가 후 photos.status() 0.019초 확인. 전체 대상 집계 중에는 ETA를 만들지 않으며 단계별 ETA는 실제 표본 평균 기반 추정치다.
-
-실제 배포 확인: 인증된 /api/status 응답0.14초. 사진 사전 발견99,333개에서 metadata 확인 단계의 eta_seconds29612 반환 확인(초기 표본 추정이며 확정 소요시간 아님). 파일 집계는768,981개까지 발견 중인 상태에서 total_known=false/ETA null을 확인했다.
-
-
-## 2026-10-26 — DB 증분 색인 / 접속 분리 / 설정 화면
-
-- 변경 전 확인: 파일 작업의 큰 staging/FTS 교체와 재시작 시 미완료 작업 초기화, 사진 서비스의 DB 잠금 오류와 이전 OOM 재시작이 있었다. 변경 전 DB를 서비스 중지·WAL 체크포인트 후 별도 PC 비공개 백업으로 보관하고 마이그레이션 후 quick_check=ok 확인.
-- Pi에서76개 자동 테스트 통과. 실제 별도 프로세스를 커밋 직후 즉시 종료해 파일 추출/사진 분류 완료 항목을 다시 실행하지 않는 것을 검증. 동일 hash/시간만 변경/내용 변경/모델 버전/이전 staging 재사용/읽기 실패 뒤 다음 항목 진행을 포함.
-- 운영 서비스 재시작 전후 scan_jobs의 generation,total,done을 대조해 동일 작업과 진행 위치 유지 확인. 기존 사진1,944개가 내용 재분류 없이 재사용되며 해시가 보완되는 상태 확인. 전체 라이브러리 최초 기준 해시 생성은 백그라운드 작업이므로 완료로 보고하지 않는다.
-- 설치된 실제 CLIP/YuNet/SFace로 합성 이미지9장 처리, 주제7개 반환, 주제 문장 캐시 재사용. 기존1200MiB/swap128MiB 제한의 별도 cgroup에서 성공, peak RSS764.8MiB, cgroup peak1004.7MiB/swap6.8MiB. 사용자 자료는 이 시험에 사용하지 않았다. 모든 이미지/코덱에서 OOM이 불가능하다는 의미는 아니다.
-- 실제 nginx11977 로그인/설정 저장,8080 CAPTCHA 필수, 내부 쿠키의 외부 API 접근401, 클라이언트 X-Alter-Exposure 위조 차단. 신뢰하지 않는 접속 출발 주소에11977 응답403. 테스트 전용 주소에서5회 실패 후429/Retry-After600, DB에 실패/차단 상태 기록과 서비스 재시작 후 차단 유지 확인. 검증 전용 주소의 기록만 시험 후 정리. PC에서18080 접속 불가 확인.
-- Chrome에서11977 설정 저장·새로고침·라이트/다크 화면,8080의 보안 문자 표시 확인. 실제 CAPTCHA 자동 해독은 하지 않음. 정답/만료/재사용/IP 바인딩/외부 로그인 성공은 격리된 API 테스트의 고정 CAPTCHA fixture로 검증.
-- 온스크린 자동 실행 파일, 현재 전용 Chromium 실행 주소, 시작/복구 스크립트를11977/panel로 변경. PC 실행파일도11977을 연다.
-- 공유기 포트포워딩 및 실제 외부망 접속은 이번 변경에서 검증하지 않았다. 공인IP/DDNS를 ALLOWED_HOSTS에 추가해야 한다. 실제 전원 케이블을 뽑는 시험도 하지 않았다.
-
-- 최종11977 경유 인증된 파일 검색40개 결과와 이미 켜져 있던 카메라의 완전한 JPEG 프레임23,929바이트 수신 확인. 카메라/Flow 설정은 변경하지 않음.
-- 최초 파일 해시 보완의 첫 대상은192.41GiB였으며 완료 항목 수0 상태에서도 해당 대용량 파일의 해시 계산이 진행 중이다. 이를 전체 색인 완료나 정지로 해석하지 않는다. 사진 정보 확인은8,382/99,333개에서 기존 결과8,382개 재사용, 변경/오류0을 관측했다. 파일 검색 가능 수1,344,938개 및 사진 분류79,019개는 유지됐다.
-
-2026-10-30: 256MiB 합성 NTFS 이미지의 SSH/iSCSI Windows 압축 해제와 정상 분리, Pi 재마운트를 검증했다. 합성 파일 내용과 하드링크/추가 스트림 보존을 확인했다. 운영 데이터의 전체 압축 해제 완료를 뜻하지 않는다. 공개 문서의 설치별 경로를 정리했고 사진/Files 관련 테스트 17개가 통과했다.
-
-2026-11-03 GPU 계측: Linux V3D `gpu_stats`의 엔진 시간 차분을 상태 API에 연결했다. Windows와 실제 Pi에서 GPU 단위 검사 4개(겹치는 엔진 비합산, 카운터 리셋/부재, 실제 유휴와 미측정 구분, 다중 요청 캐시)가 통과했다. 실제11977 API 3표본에서 GPU 렌더링1.5~1.8%, 연산0%를 관측했다. Chrome11977 라이트·다크 모드에서 최대 엔진 및 엔진별 수치가 새로고침 없이 갱신되는 것을 확인했다. 기존 파일/사진 DB를 보존했고 서버 재시작 전후 검색 가능 파일 수는 같았다. 원래 실행 중이던 카메라도 복원했다.
-
-같은 llama.cpp 고정 커밋의 CPU와 Vulkan 공식 빌드가 성공했다. V3D 실제 GPU 인식과 CPU pp128/tg128 각3회 결과, 온도 제한 관측은 [모델 기록](models.md)에 조건과 함께 남긴다. 다른 모델의 공개 벤치마크 수치를 이 장비의 결과로 대신하지 않는다.
-
-Vulkan 전체 GPU 적재 시험은240초, Flash Attention을 끈 생성 전용 재시험은180초 안에 예열을 끝내지 못했다. 종료124로 제한 시간 종료이며 OOM 실패로 분류하지 않는다. GPU 정상 생성 속도/정확도 검증 완료로 표시하지 않는다. 운영 CPU 모델을 복구했고 GPU 임시 시험 서비스는 종료했다.
-
-복구된 CPU 서버에서 실제 한국어 합성 질문에32토큰을 생성하고 정상 stop으로 완료(전체26.768초)했다. 웹·CPU 모델·사진 작업자의 active 상태를 확인했다. 측정용 GPU 서비스나 Vulkan 자동 시작 설정은 남기지 않았다.
+영문 10개 메뉴·파일/사진 미리보기·한영 터치 키보드와 두 테마를 Chrome에서 확인했습니다. 운영 Pi의 한영 스트리밍 응답은 각각 합성 인사 요청 1건으로 확인했으며, 속도 벤치마크나 대화 품질 종합 평가가 아닙니다. 기존 사진 작업자와 모델 서비스를 유지하고 웹 서비스를 갱신했습니다. 재시작 직후 기존 색인 작업의 DB 쓰기 잠금으로 로그인 1회가 실패했으며, 잠금 해제 후 로그인과 응답 시험은 성공했습니다.

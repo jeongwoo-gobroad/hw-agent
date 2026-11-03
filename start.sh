@@ -8,6 +8,7 @@ fi
 units=(nginx.service alter.service alter-llm.service alter-ngrok.service alter-oauth.service alter-photos.service smbd.service)
 missing=()
 for unit in "${units[@]}"; do
+  systemctl is-enabled --quiet "$unit" || continue
   state=$(systemctl is-active "$unit" || true)
   [[ "$state" == active || "$state" == activating || "$state" == reloading ]] || missing+=("$unit")
 done

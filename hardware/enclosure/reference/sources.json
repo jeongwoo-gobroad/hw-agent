@@ -1,0 +1,47 @@
+[
+  {
+    "file": "display_7_brief.pdf",
+    "url": "https://pip-assets.raspberrypi.com/categories/1083-raspberry-pi-touch-display-2/documents/RP-010429-MM-3-touch-display-2-7-inch-product-brief.pdf",
+    "sha256": "9a54a8d7621ef95cc0810362fc611781649443a326eefd9ffbcb98af6f92af29",
+    "retrieved": "2026-10-21"
+  },
+  {
+    "file": "display_7_step.zip",
+    "url": "https://pip-assets.raspberrypi.com/categories/1083-raspberry-pi-touch-display-2/documents/RP-009154-DD-3-raspberry-pi-touch-display-2-step-7inch.zip",
+    "sha256": "a5391c2e04dfc79f5c701295c7afe4ba998818c7a7104e8d81cb97c369bfc2b5",
+    "retrieved": "2026-10-21",
+    "extracted": "display_7_step.step"
+  },
+  {
+    "file": "camera3_drawing.pdf",
+    "url": "https://datasheets.raspberrypi.com/camera/camera-module-3-standard-mechanical-drawing.pdf",
+    "sha256": "bde27f5ab38dd46aa05713bbb17c6e8acc4cb1d48ff9109df511256f6fbc66ac",
+    "retrieved": "2026-10-21"
+  },
+  {
+    "file": "pi5_drawing.pdf",
+    "url": "https://datasheets.raspberrypi.com/rpi5/raspberry-pi-5-mechanical-drawing.pdf",
+    "sha256": "5dd680d6c1f5e7aa9c7b020695e315d04aac862df82ff01d4e9041cd0668d7f2",
+    "retrieved": "2026-10-21"
+  },
+  {
+    "file": "case_brief.pdf",
+    "url": "https://datasheets.raspberrypi.com/case/case-for-raspberry-pi-5-product-brief.pdf",
+    "sha256": "5454cdfd1d0b80db55d664054509fb951a1ac2b426d079c46cbe640e2d7c00d2",
+    "retrieved": "2026-10-21"
+  },
+  {
+    "file": "pi5_step.zip",
+    "url": "https://pip-assets.raspberrypi.com/categories/892-raspberry-pi-5/documents/RP-010083-CA-1-rpi-5%203D%20STEP%20-%20No%20Graphics%20small%20file.zip",
+    "sha256": "6841637b4cfa97637bf34b529bfe896f24d9634b2c40b57a156781f55d88f06f",
+    "retrieved": "2026-10-21",
+    "extracted": "pi5_step.step"
+  },
+  {
+    "file": "camera3_step.zip",
+    "url": "https://pip-assets.raspberrypi.com/categories/1207-design-files/documents/RP-008154-DS-1-camera-module-3-step.zip",
+    "sha256": "b2e2026ea5322bddf1ddcbae97c094822ee9e0ca92d7bc5c748f60a8b5ef6683",
+    "retrieved": "2026-10-21",
+    "extracted": "camera3_step.stp"
+  }
+]

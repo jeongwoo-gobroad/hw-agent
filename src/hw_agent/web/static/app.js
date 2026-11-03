@@ -2,7 +2,7 @@ const $ = s => document.querySelector(s);
 const el = (tag, text, cls) => {const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
 let chatController=null;
 let csrf="", sessionId=null, roots=[], flowList=[], deviceList=[], editFlow=null, offset=0, lastQuery="";
-const titles={photos:"기억을 모으는 공간.",photofolders:"사진 폴더를 따로 관리하세요.",overview:"나의 공간, 한눈에.",files:"필요한 파일을 찾아보세요.",chat:"얼터와 함께 찾기.",drives:"저장장치를 한곳에서.",home:"우리 집의 작은 자동화.",camera:"지금, 카메라 너머.",motion:"움직임으로 연결하는 일상.",settings:"나에게 맞게 설정하기."};
+const titles={photos:tr("기억을 모으는 공간."),photofolders:tr("사진 폴더를 따로 관리하세요."),overview:tr("나의 공간, 한눈에."),files:tr("필요한 파일을 찾아보세요."),chat:tr("얼터와 함께 찾기."),drives:tr("저장장치를 한곳에서."),home:tr("우리 집의 작은 자동화."),camera:tr("지금, 카메라 너머."),motion:tr("움직임으로 연결하는 일상."),settings:tr("나에게 맞게 설정하기.")};
 function notify(text){$("#notice").textContent=text;$("#notice").hidden=false;clearTimeout(notify.timer);notify.timer=setTimeout(()=>$("#notice").hidden=true,7000);}
 async function api(path,method="GET",body){const response=await fetch("/api"+path,{method,headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},...(body!==undefined?{body:JSON.stringify(body)}:{})});const result=await response.json();if(!response.ok){if(response.status===401&&!path.startsWith("/smartthings/"))location.href="/login";throw new Error(typeof result.detail==="string"?result.detail:JSON.stringify(result.detail));}return result;}
 function action(selector,fn){$(selector).addEventListener("click",async e=>{const button=e.currentTarget;button.disabled=true;try{await fn(e);}catch(error){notify(error.message);}finally{button.disabled=button.dataset.inactive==="true";}});}
@@ -13,9 +13,9 @@ function page(name){
   document.querySelectorAll(".page").forEach(n=>n.hidden=n.id!==name);
   document.querySelectorAll("nav button").forEach(n=>{n.classList.toggle("selected",n.dataset.page===name);if(n.dataset.page===name)n.setAttribute("aria-current","page");else n.removeAttribute("aria-current");});
   $("#heading").textContent=titles[name];history.replaceState(null,"","#"+name);
-  if(name!=="settings"){$("#camera-orientation-stream").removeAttribute("src");$("#camera-orientation-view").hidden=true;$("#camera-orientation-preview").textContent="방향 미리보기 켜기";}
+  if(name!=="settings"){$("#camera-orientation-stream").removeAttribute("src");$("#camera-orientation-view").hidden=true;$("#camera-orientation-preview").textContent=tr("방향 미리보기 켜기");}
   if(name!=="camera")$("#stream").removeAttribute("src");
-  if(name!=="motion"){$("#motion-stream").removeAttribute("src");$("#motion-preview").hidden=true;$("#motion-preview-toggle").textContent="미리보기 켜기";}
+  if(name!=="motion"){$("#motion-stream").removeAttribute("src");$("#motion-preview").hidden=true;$("#motion-preview-toggle").textContent=tr("미리보기 켜기");}
   const loaders={files:()=>window.loadFileTree(),settings:loadSettings,photos:()=>window.loadPhotos(),photofolders:()=>window.loadPhotoFolders(),drives:loadDrives,home:loadHome,chat:loadSessions,camera:loadCamera,motion:loadMotion};
   if(loaders[name])loaders[name]().catch(e=>notify(e.message));
   if(name==="files"&&!lastQuery)searchFiles().catch(e=>notify(e.message));
@@ -24,23 +24,23 @@ function page(name){
 document.querySelectorAll("[data-page]").forEach(b=>b.onclick=()=>page(b.dataset.page));
 document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>page(b.dataset.go));
 action("#logout",async()=>{await api("/logout","POST",{});location.href="/login";});
-async function status(){const s=await api("/status");if(window.photoDashboard)window.photoDashboard(s);$("#file-count").textContent=s.indexed_files.toLocaleString();$("#memory").textContent=size(s.memory.MemAvailable);$("#camera-status").textContent=s.camera.recording?"녹화 중":s.camera.running?"켜짐":"꺼짐";$("#gesture-state").textContent=s.camera.last_gesture?.name?"최근 인식: "+({Open_Palm:"손바닥",Closed_Fist:"주먹",Victory:"V 표시",Thumb_Up:"엄지 위",Thumb_Down:"엄지 아래"}[s.camera.last_gesture.name]||s.camera.last_gesture.name):s.camera.gestures?"손동작 인식 대기 중":"제스처 인식 꺼짐";if(s.gesture_event&&status.lastEvent!==s.gesture_event.time){status.lastEvent=s.gesture_event.time;notify("제스처 감지: "+s.gesture_event.gesture);}}
-async function loadRoots(){roots=await api("/roots");document.querySelectorAll(".root-select").forEach(select=>{const old=select.value;select.replaceChildren();if(select.name==="root")select.add(new Option("전체 폴더","0"));roots.forEach(r=>select.add(new Option(r.label,r.id)));if([...select.options].some(o=>o.value===old))select.value=old;});$("#roots").replaceChildren();if(!roots.length)$("#roots").append(el("p","등록된 폴더가 없습니다. 위에서 드라이브의 폴더를 선택하세요.","muted"));roots.forEach(r=>{const row=el("div",undefined,"root-row");row.append(el("span",r.path),button("등록 해제",async()=>{if(!confirm("색인에서 이 폴더를 제외할까요? 원본은 보존됩니다."))return;await api("/roots/"+r.id,"DELETE");await loadRoots();}));$("#roots").append(row);});}
-async function loadDrives(){const devices=await api("/devices");$("#devices").replaceChildren();if(!devices.length)$("#devices").append(el("p","연결된 외장 저장장치가 없습니다.","muted"));devices.forEach(d=>{const card=el("div",undefined,"card");card.append(el("h2",d.model||d.name),el("p",`${d.transport} · ${d.fstype} · ${size(d.size)}`),el("p",d.mount||"마운트되지 않음"),el("small","남은 공간 "+size(d.free)),el("p","볼륨 ID · "+d.uuid,"muted"));if(d.mount)card.append(button("색인 폴더 선택",()=>browse(d.mount,"index")),button("SMB 폴더 선택",()=>browse(d.mount,"share")));card.append(button(d.mount?"안전하게 해제":"마운트",async()=>{if(d.mount&&!confirm("이 드라이브를 해제할까요?"))return;const result=await api("/devices/action","POST",{device:d.path,action:d.mount?"unmount":"mount"});notify(result.message);await loadDrives();}));$("#devices").append(card);});await loadRoots();await loadShares();}
+async function status(){const s=await api("/status");if(window.photoDashboard)window.photoDashboard(s);$("#file-count").textContent=s.indexed_files.toLocaleString(window.alterLanguage);$("#memory").textContent=size(s.memory.MemAvailable);$("#camera-status").textContent=s.camera.recording?tr("녹화 중"):s.camera.running?tr("켜짐"):tr("꺼짐");$("#gesture-state").textContent=s.camera.last_gesture?.name?tr("최근 인식: ")+({Open_Palm:tr("손바닥"),Closed_Fist:tr("주먹"),Victory:tr("V 표시"),Thumb_Up:tr("엄지 위"),Thumb_Down:tr("엄지 아래")}[s.camera.last_gesture.name]||s.camera.last_gesture.name):s.camera.gestures?tr("손동작 인식 대기 중"):tr("제스처 인식 꺼짐");if(s.gesture_event&&status.lastEvent!==s.gesture_event.time){status.lastEvent=s.gesture_event.time;notify(tr("제스처 감지: ")+s.gesture_event.gesture);}}
+async function loadRoots(){roots=await api("/roots");document.querySelectorAll(".root-select").forEach(select=>{const old=select.value;select.replaceChildren();if(select.name==="root")select.add(new Option(tr("전체 폴더"),"0"));roots.forEach(r=>select.add(new Option(r.label,r.id)));if([...select.options].some(o=>o.value===old))select.value=old;});$("#roots").replaceChildren();if(!roots.length)$("#roots").append(el("p",tr("등록된 폴더가 없습니다. 위에서 드라이브의 폴더를 선택하세요."),"muted"));roots.forEach(r=>{const row=el("div",undefined,"root-row");row.append(el("span",r.path),button(tr("등록 해제"),async()=>{if(!confirm(tr("색인에서 이 폴더를 제외할까요? 원본은 보존됩니다.")))return;await api("/roots/"+r.id,"DELETE");await loadRoots();}));$("#roots").append(row);});}
+async function loadDrives(){const devices=await api("/devices");$("#devices").replaceChildren();if(!devices.length)$("#devices").append(el("p",tr("연결된 외장 저장장치가 없습니다."),"muted"));devices.forEach(d=>{const card=el("div",undefined,"card");card.append(el("h2",d.model||d.name),el("p",`${d.transport} · ${d.fstype} · ${size(d.size)}`),el("p",d.mount||tr("마운트되지 않음")),el("small",tr("남은 공간 ")+size(d.free)),el("p",tr("볼륨 ID · ")+d.uuid,"muted"));if(d.mount)card.append(button(tr("색인 폴더 선택"),()=>browse(d.mount,"index")),button(tr("SMB 폴더 선택"),()=>browse(d.mount,"share")));card.append(button(d.mount?tr("안전하게 해제"):tr("마운트"),async()=>{if(d.mount&&!confirm(tr("이 드라이브를 해제할까요?")))return;const result=await api("/devices/action","POST",{device:d.path,action:d.mount?"unmount":"mount"});notify(result.message);await loadDrives();}));$("#devices").append(card);});await loadRoots();await loadShares();}
 async function browse(path,target="index"){
   const data=await api("/folders?path="+encodeURIComponent(path));
   const box=$(target==="share"?"#share-browser":"#folder-browser");
   box.replaceChildren(el("p",data.path));
   const controls=el("div",undefined,"actions");
-  if(data.path!==data.mount)controls.append(button("상위 폴더",()=>browse(data.path.slice(0,data.path.lastIndexOf("/")),target)));
-  controls.append(button(target==="share"?"이 폴더를 공유 대상으로 선택":"이 폴더 색인 등록",async()=>{
+  if(data.path!==data.mount)controls.append(button(tr("상위 폴더"),()=>browse(data.path.slice(0,data.path.lastIndexOf("/")),target)));
+  controls.append(button(target==="share"?tr("이 폴더를 공유 대상으로 선택"):tr("이 폴더 색인 등록"),async()=>{
     if(target==="share"){
       $("#share-path").value=data.path;
       $("#share-submit").disabled=false;
       $("#share-form input[name=name]").focus();
-      notify("공유 이름과 권한을 확인한 뒤 공유 적용을 누르세요. 색인에는 등록되지 않습니다.");
+      notify(tr("공유 이름과 권한을 확인한 뒤 공유 적용을 누르세요. 색인에는 등록되지 않습니다."));
     }else{
-      await api("/roots","POST",{path:data.path});await loadRoots();notify("색인 폴더가 등록되었습니다. SMB 공유는 별도로 설정하세요.");
+      await api("/roots","POST",{path:data.path});await loadRoots();notify(tr("색인 폴더가 등록되었습니다. SMB 공유는 별도로 설정하세요."));
     }
   }));
   box.append(controls);
@@ -48,29 +48,29 @@ async function browse(path,target="index"){
   box.scrollIntoView({behavior:"smooth",block:"center"});
 }
 action("#refresh-drives",loadDrives);
-action("#index-now",async()=>{await api("/index","POST",{});notify("색인을 시작했습니다.");});
+action("#index-now",async()=>{await api("/index","POST",{});notify(tr("색인을 시작했습니다."));});
 $("#share-form").onsubmit=async e=>{e.preventDefault();try{const f=new FormData(e.target);const r=await api("/shares","POST",{path:f.get("path"),name:f.get("name"),readonly:f.has("readonly")});notify(r.message);await loadShares();}catch(error){notify(error.message);}};
 function fileSize(value){if(value<1024)return value+" B";if(value<1024**2)return (value/1024).toFixed(1)+" KiB";return (value/1024**2).toFixed(1)+" MiB";}
-function fileCards(files){const grid=el("div",undefined,"file-grid");files.forEach(f=>{const card=el("article",undefined,"file-card");card.append(el("span",f.ext.replace(".","").toUpperCase()||"FILE","file-type"),el("h3",f.name),el("small",f.path),el("p",f.snippet||"내용 미리보기 없음"),el("small",new Date(f.modified*1000).toLocaleDateString()+" · "+fileSize(f.size)),button("미리보기",()=>showPreview(f)));grid.append(card);});return grid;}
-async function searchFiles(next=false){if(!next)offset=0;$("#result-count").textContent="검색 중…";const data=new FormData($("#search"));if(data.get("after")&&data.get("before")&&data.get("after")>data.get("before")){$("#result-count").textContent="시작 날짜가 종료 날짜보다 늦습니다.";return;}const params=new URLSearchParams();for(const [key,value]of data){if(!value)continue;if(key==="after"||key==="before")params.set(key,new Date(value+(key==="before"?"T23:59:59":"T00:00:00")).getTime()/1000);else params.set(key,key==="rerank"?"true":value);}params.set("offset",offset);lastQuery=params.toString();const files=await api("/search?"+lastQuery);if(next)$("#results").append(...fileCards(files).children);else $("#results").replaceChildren(...fileCards(files).children);$("#result-count").textContent=files.length?`검색 결과 ${offset+files.length}개 표시`:"검색 결과가 없습니다. 색인 폴더와 검색 조건을 확인하세요.";$("#more").hidden=files.length<40;}
+function fileCards(files){const grid=el("div",undefined,"file-grid");files.forEach(f=>{const card=el("article",undefined,"file-card");card.append(el("span",f.ext.replace(".","").toUpperCase()||"FILE","file-type"),el("h3",f.name),el("small",f.path),el("p",f.snippet||tr("내용 미리보기 없음")),el("small",new Date(f.modified*1000).toLocaleDateString(window.alterLanguage)+" · "+fileSize(f.size)),button(tr("미리보기"),()=>showPreview(f)));grid.append(card);});return grid;}
+async function searchFiles(next=false){if(!next)offset=0;$("#result-count").textContent=tr("검색 중…");const data=new FormData($("#search"));if(data.get("after")&&data.get("before")&&data.get("after")>data.get("before")){$("#result-count").textContent=tr("시작 날짜가 종료 날짜보다 늦습니다.");return;}const params=new URLSearchParams();for(const [key,value]of data){if(!value)continue;if(key==="after"||key==="before")params.set(key,new Date(value+(key==="before"?"T23:59:59":"T00:00:00")).getTime()/1000);else params.set(key,key==="rerank"?"true":value);}params.set("offset",offset);lastQuery=params.toString();const files=await api("/search?"+lastQuery);if(next)$("#results").append(...fileCards(files).children);else $("#results").replaceChildren(...fileCards(files).children);$("#result-count").textContent=files.length?tr("검색 결과 {{v0}}개 표시", {v0: offset+files.length}):tr("검색 결과가 없습니다. 색인 폴더와 검색 조건을 확인하세요.");$("#more").hidden=files.length<40;}
 $("#search").onsubmit=e=>{e.preventDefault();searchFiles().catch(e=>notify(e.message));};
 action("#reset-search",async()=>{$("#search").reset();await searchFiles();});
 action("#more",async()=>{offset+=40;await searchFiles(true);});
-async function showPreview(f,sourceUrl=null,downloadUrl=null){$("#preview-title").textContent=f.name;$("#preview-body").replaceChildren(el("p","미리보기를 준비하고 있습니다…"));$("#download").href=downloadUrl||"/api/files/"+f.id+"/download";$("#preview").showModal();const url=sourceUrl||"/api/files/"+f.id+"/preview";if(f.ext===".pdf"){const frame=el("iframe");frame.src=url;frame.title=f.name;frame.className="pdf-preview";$("#preview-body").replaceChildren(frame);}else if([".jpg",".jpeg",".png",".webp",".gif",".heic",".heif",".bmp",".tif",".tiff"].includes(f.ext)){const img=el("img");img.src=url;img.alt=f.name;img.onerror=()=>$("#preview-body").replaceChildren(el("p","미리보기를 불러올 수 없습니다."));$("#preview-body").replaceChildren(img);}else if([".mov",".mp4",".mkv",".avi",".m4v"].includes(f.ext)){const video=el("video");video.controls=true;video.src=url;video.onerror=()=>$("#preview-body").append(el("p","변환 실패 또는 지원하지 않는 영상입니다."));$("#preview-body").replaceChildren(video);}else{const response=await fetch(url);if(!response.ok){$("#preview-body").replaceChildren(el("p","미리보기를 열지 못했습니다. 드라이브 연결 상태를 확인하세요."));return;}$("#preview-body").replaceChildren(el("pre",await response.text()));}}
+async function showPreview(f,sourceUrl=null,downloadUrl=null){$("#preview-title").textContent=f.name;$("#preview-body").replaceChildren(el("p",tr("미리보기를 준비하고 있습니다…")));$("#download").href=downloadUrl||"/api/files/"+f.id+"/download";$("#preview").showModal();const url=sourceUrl||"/api/files/"+f.id+"/preview";if(f.ext===".pdf"){const frame=el("iframe");frame.src=url;frame.title=f.name;frame.className="pdf-preview";$("#preview-body").replaceChildren(frame);}else if([".jpg",".jpeg",".png",".webp",".gif",".heic",".heif",".bmp",".tif",".tiff"].includes(f.ext)){const img=el("img");img.src=url;img.alt=f.name;img.onerror=()=>$("#preview-body").replaceChildren(el("p",tr("미리보기를 불러올 수 없습니다.")));$("#preview-body").replaceChildren(img);}else if([".mov",".mp4",".mkv",".avi",".m4v"].includes(f.ext)){const video=el("video");video.controls=true;video.src=url;video.onerror=()=>$("#preview-body").append(el("p",tr("변환 실패 또는 지원하지 않는 영상입니다.")));$("#preview-body").replaceChildren(video);}else{const response=await fetch(url);if(!response.ok){$("#preview-body").replaceChildren(el("p",tr("미리보기를 열지 못했습니다. 드라이브 연결 상태를 확인하세요.")));return;}$("#preview-body").replaceChildren(el("pre",await response.text()));}}
 action("#close-preview",()=>$("#preview").close());
 $("#preview").addEventListener("close",()=>$("#preview-body").replaceChildren());
 async function loadSessions(){
  const list=await api("/sessions");$("#sessions").replaceChildren();
  if(!sessionId&&list.length){sessionId=list[0].id;$("#chat-title").textContent=list[0].title;await loadMessages();}
  list.forEach(s=>{const item=button(s.title,async()=>{sessionId=s.id;$("#chat-title").textContent=s.title;await loadMessages();await loadSessions();},"session"+(sessionId===s.id?" active":""));item.disabled=!!chatController;$("#sessions").append(item);});
- if(!list.length)$("#sessions").append(el("small","대화를 시작하면 여기에 저장됩니다."));
+ if(!list.length)$("#sessions").append(el("small",tr("대화를 시작하면 여기에 저장됩니다.")));
  for(const id of ["rename-chat","delete-chat","export-chat"])$("#"+id).disabled=!sessionId||!!chatController;
 }
 
-async function loadMessages(){if(!sessionId)return;const messages=await api("/sessions/"+sessionId);$("#messages").replaceChildren();messages.forEach(m=>{const node=el("div",undefined,"message "+m.role);if(m.role==="assistant"){try{const result=JSON.parse(m.content);node.append(el("p",result.text),el("small",result.mode==="local_llm"?"로컬 모델":result.mode==="keyword_fallback"?"모델 응답 실패 · 키워드 검색":"키워드 검색"),fileCards(result.files||[]));if(result.photos?.length&&window.photoChatCards)node.append(window.photoChatCards(result.photos));if(result.proposed_flow)node.append(button("Flow 실행 · "+result.proposed_flow.name,async()=>{if(confirm("이 Flow를 실행할까요?")){const run=await api("/flows/"+result.proposed_flow.id+"/run","POST",{});notify("Flow "+run.status);}}));if(result.proposed_command)node.append(button("기기 명령 실행",async()=>{if(confirm(result.text)){await api("/smartthings/command","POST",result.proposed_command);notify("명령을 전달했습니다.");}}));}catch{node.textContent=m.content;}}else node.textContent=m.content;$("#messages").append(node);});$("#messages").scrollTop=$("#messages").scrollHeight;}
-action("#new-chat",async()=>{const r=await api("/sessions","POST",{title:"새 대화"});sessionId=r.id;$("#chat-title").textContent=r.title;await loadSessions();await loadMessages();});
-action("#rename-chat",async()=>{if(!sessionId)return;const title=prompt("대화 이름");if(title){await api("/sessions/"+sessionId,"PATCH",{title});$("#chat-title").textContent=title;await loadSessions();}});
-action("#delete-chat",async()=>{if(sessionId&&confirm("이 대화를 삭제할까요?")){await api("/sessions/"+sessionId,"DELETE");sessionId=null;$("#messages").replaceChildren();await loadSessions();}});
+async function loadMessages(){if(!sessionId)return;const messages=await api("/sessions/"+sessionId);$("#messages").replaceChildren();messages.forEach(m=>{const node=el("div",undefined,"message "+m.role);if(m.role==="assistant"){try{const result=JSON.parse(m.content);node.append(el("p",result.text),el("small",result.mode==="local_llm"?tr("로컬 모델"):result.mode==="keyword_fallback"?tr("모델 응답 실패 · 키워드 검색"):tr("키워드 검색")),fileCards(result.files||[]));if(result.photos?.length&&window.photoChatCards)node.append(window.photoChatCards(result.photos));if(result.proposed_flow)node.append(button(tr("Flow 실행 · ")+result.proposed_flow.name,async()=>{if(confirm(tr("이 Flow를 실행할까요?"))){const run=await api("/flows/"+result.proposed_flow.id+"/run","POST",{});notify("Flow "+run.status);}}));if(result.proposed_command)node.append(button(tr("기기 명령 실행"),async()=>{if(confirm(result.text)){await api("/smartthings/command","POST",result.proposed_command);notify(tr("명령을 전달했습니다."));}}));}catch{node.textContent=m.content;}}else node.textContent=m.content;$("#messages").append(node);});$("#messages").scrollTop=$("#messages").scrollHeight;}
+action("#new-chat",async()=>{const r=await api("/sessions","POST",{title:tr("새 대화")});sessionId=r.id;$("#chat-title").textContent=r.title;await loadSessions();await loadMessages();});
+action("#rename-chat",async()=>{if(!sessionId)return;const title=prompt(tr("대화 이름"));if(title){await api("/sessions/"+sessionId,"PATCH",{title});$("#chat-title").textContent=title;await loadSessions();}});
+action("#delete-chat",async()=>{if(sessionId&&confirm(tr("이 대화를 삭제할까요?"))){await api("/sessions/"+sessionId,"DELETE");sessionId=null;$("#messages").replaceChildren();await loadSessions();}});
 action("#export-chat",async()=>{if(!sessionId)return;const data=await api("/sessions/"+sessionId);const a=el("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));a.download="alter-chat.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);});
 $("#chat-form").onsubmit=async e=>{
  e.preventDefault();if(chatController)return;
@@ -83,33 +83,33 @@ $("#chat-form").onsubmit=async e=>{
   if(!sessionId){const session=await api("/sessions","POST",{title:message.slice(0,40)});sessionId=session.id;$("#chat-title").textContent=session.title;}
   await loadSessions();
   $("#messages").append(el("div",message,"message user"));
-  node=el("div",undefined,"message assistant streaming");textNode=el("p","요청을 읽고 있습니다…");const progress=el("small","생성 준비 중 · 0초");node.append(textNode,progress);$("#messages").append(node);input.value="";
+  node=el("div",undefined,"message assistant streaming");textNode=el("p",tr("요청을 읽고 있습니다…"));const progress=el("small",tr("생성 준비 중 · 0초"));node.append(textNode,progress);$("#messages").append(node);input.value="";
   const started=Date.now();let receiving=false;
-  timer=setInterval(()=>progress.textContent=(receiving?"실시간 생성 중":"모델이 요청을 처리하고 있습니다")+" · "+Math.floor((Date.now()-started)/1000)+"초",1000);
+  timer=setInterval(()=>progress.textContent=(receiving?tr("실시간 생성 중"):tr("모델이 요청을 처리하고 있습니다"))+" · "+Math.floor((Date.now()-started)/1000)+tr("초"),1000);
   await streamAnswer(sessionId,message,csrf,controller.signal,event=>{if(event.text){textNode.textContent=event.text;receiving=event.type==="delta";$("#messages").scrollTop=$("#messages").scrollHeight;}});
   await loadMessages();
- }catch(error){if(textNode)textNode.textContent=error.name==="AbortError"?"생성을 중단했습니다. 중단된 답변은 저장하지 않습니다.":error.message;else notify(error.message);}
+ }catch(error){if(textNode)textNode.textContent=error.name==="AbortError"?tr("생성을 중단했습니다. 중단된 답변은 저장하지 않습니다."):error.message;else notify(error.message);}
  finally{clearInterval(timer);node?.classList.remove("streaming");if(node?.isConnected)node.querySelector("small").textContent="";chatController=null;input.disabled=false;form.querySelector('button[type="submit"],button:not([type])').disabled=false;$("#stop-chat").hidden=true;$("#new-chat").disabled=false;await loadSessions();input.focus();}
 };
 action("#stop-chat",()=>chatController?.abort());
 
-async function loadFlows(){flowList=await api("/flows");$("#flows").replaceChildren();if(!flowList.length)$("#flows").append(el("p","아직 Flow가 없습니다. 기기 동작과 대기를 조합해 보세요.","muted"));flowList.forEach(f=>{const card=el("div",undefined,"card");card.append(el("h2",f.name),el("p",f.steps.length+"개 단계"),button("실행",async()=>{if(!confirm(f.name+" Flow를 실행할까요?"))return;const r=await api("/flows/"+f.id+"/run","POST",{});notify("Flow "+r.status);await loadRuns();}),button("편집",()=>editFlowForm(f)),button("복제",async()=>{await api("/flows","POST",{name:f.name+" 복사",steps:f.steps});await loadFlows();}),button("삭제",async()=>{if(confirm("Flow를 삭제할까요?")){await api("/flows/"+f.id,"DELETE");await loadFlows();}}));$("#flows").append(card);});await loadRuns();}
-async function loadRuns(){const rows=await api("/runs");$("#runs").replaceChildren();rows.forEach(r=>{$("#runs").append(el("p",`${new Date(r.created*1000).toLocaleString()} · ${flowList.find(f=>f.id===r.flow)?.name||"삭제된 Flow"} · ${({completed:"완료",failed:"실패",running:"실행 중",interrupted:"재시작으로 중단"})[r.status]||r.status} · ${JSON.parse(r.log).filter(x=>x.status==="completed").length}단계 완료`));});if(!rows.length)$("#runs").append(el("p","아직 실행 이력이 없습니다.","muted"));}
-async function loadHome(){await loadFlows();const connection=await loadConnection();if(connection.connected||connection.pat_configured)await loadDevices();else $("#smart-devices").replaceChildren(el("p","삼성 계정을 연결하면 기기 목록을 볼 수 있습니다.","muted"));}
+async function loadFlows(){flowList=await api("/flows");$("#flows").replaceChildren();if(!flowList.length)$("#flows").append(el("p",tr("아직 Flow가 없습니다. 기기 동작과 대기를 조합해 보세요."),"muted"));flowList.forEach(f=>{const card=el("div",undefined,"card");card.append(el("h2",f.name),el("p",tr("단계 수: {{count}}", {count:f.steps.length})),button(tr("실행"),async()=>{if(!confirm(f.name+tr(" Flow를 실행할까요?")))return;const r=await api("/flows/"+f.id+"/run","POST",{});notify("Flow "+r.status);await loadRuns();}),button(tr("편집"),()=>editFlowForm(f)),button(tr("복제"),async()=>{await api("/flows","POST",{name:f.name+tr(" 복사"),steps:f.steps});await loadFlows();}),button(tr("삭제"),async()=>{if(confirm(tr("Flow를 삭제할까요?"))){await api("/flows/"+f.id,"DELETE");await loadFlows();}}));$("#flows").append(card);});await loadRuns();}
+async function loadRuns(){const rows=await api("/runs");$("#runs").replaceChildren();rows.forEach(r=>{$("#runs").append(el("p",tr("{{v0}} · {{v1}} · {{v2}} · {{v3}}단계 완료", {v0: new Date(r.created*1000).toLocaleString(window.alterLanguage), v1: flowList.find(f=>f.id===r.flow)?.name||tr("삭제된 Flow"), v2: ({completed:tr("완료"),failed:tr("실패"),running:tr("실행 중"),interrupted:tr("재시작으로 중단")})[r.status]||r.status, v3: JSON.parse(r.log).filter(x=>x.status==="completed").length})));});if(!rows.length)$("#runs").append(el("p",tr("아직 실행 이력이 없습니다."),"muted"));}
+async function loadHome(){await loadFlows();const connection=await loadConnection();if(connection.connected||connection.pat_configured)await loadDevices();else $("#smart-devices").replaceChildren(el("p",tr("삼성 계정을 연결하면 기기 목록을 볼 수 있습니다."),"muted"));}
 async function loadDevices(){
- $("#smart-devices").replaceChildren(el("p","기기를 불러오고 있습니다…","loading"));
+ $("#smart-devices").replaceChildren(el("p",tr("기기를 불러오고 있습니다…"),"loading"));
  try{deviceList=await api("/smartthings/devices");renderDevices();}
  catch(error){$("#smart-devices").replaceChildren(el("p",error.message,"muted"));}
 }
 function renderDevices(){
  const query=$("#device-filter").value.trim().toLowerCase();$("#smart-devices").replaceChildren();
  const listing=deviceList.filter(d=>(d.label||d.name).toLowerCase().includes(query));
- if(!listing.length)$("#smart-devices").append(el("p",query?"이름이 일치하는 기기가 없습니다.":"연결된 기기가 없습니다.","muted"));
- listing.forEach(d=>{const card=el("div",undefined,"card"),state=el("p","상태 확인을 누르면 최신 정보를 가져옵니다.","device-state muted");
+ if(!listing.length)$("#smart-devices").append(el("p",query?tr("이름이 일치하는 기기가 없습니다."):tr("연결된 기기가 없습니다."),"muted"));
+ listing.forEach(d=>{const card=el("div",undefined,"card"),state=el("p",tr("상태 확인을 누르면 최신 정보를 가져옵니다."),"device-state muted");
  card.append(el("h2",d.label||d.name));const controls=el("div",undefined,"actions");
- const refresh=async()=>{const result=await api("/smartthings/devices/"+d.deviceId+"/status");const values=[];for(const [capability,attributes]of Object.entries(result.components?.main||{})){for(const [attribute,data]of Object.entries(attributes)){if(data.value==null||typeof data.value==="object")continue;const labels={switch:"전원",level:"밝기",temperature:"온도",humidity:"습도",battery:"배터리",motion:"움직임",contact:"접촉",presence:"재실",volume:"음량",mute:"음소거"};if(labels[attribute])values.push(labels[attribute]+": "+({on:"켜짐",off:"꺼짐",active:"감지",inactive:"미감지",open:"열림",closed:"닫힘",present:"있음","not present":"없음"}[data.value]??data.value)+(data.unit?" "+data.unit:""));}}state.textContent=values.length?values.join(" · "):"이 기기는 표시할 수 있는 기본 상태가 없습니다.";};
- controls.append(button("상태 확인",refresh));
- if(d.components?.find(c=>c.id==="main")?.capabilities.some(x=>x.id==="switch"))for(const [name,command]of [["켜기","on"],["끄기","off"]])controls.append(button(name,async()=>{await api("/smartthings/command","POST",{device_id:d.deviceId,capability:"switch",command});state.textContent="명령을 전달했습니다. 실제 상태는 ‘상태 확인’으로 갱신하세요.";}));
+ const refresh=async()=>{const result=await api("/smartthings/devices/"+d.deviceId+"/status");const values=[];for(const [capability,attributes]of Object.entries(result.components?.main||{})){for(const [attribute,data]of Object.entries(attributes)){if(data.value==null||typeof data.value==="object")continue;const labels={switch:tr("전원"),level:tr("밝기"),temperature:tr("온도"),humidity:tr("습도"),battery:tr("배터리"),motion:tr("움직임"),contact:tr("접촉"),presence:tr("재실"),volume:tr("음량"),mute:tr("음소거")};if(labels[attribute])values.push(labels[attribute]+": "+({on:tr("켜짐"),off:tr("꺼짐"),active:tr("감지"),inactive:tr("미감지"),open:tr("열림"),closed:tr("닫힘"),present:tr("있음"),"not present":tr("없음")}[data.value]??data.value)+(data.unit?" "+data.unit:""));}}state.textContent=values.length?values.join(" · "):tr("이 기기는 표시할 수 있는 기본 상태가 없습니다.");};
+ controls.append(button(tr("상태 확인"),refresh));
+ if(d.components?.find(c=>c.id==="main")?.capabilities.some(x=>x.id==="switch"))for(const [name,command]of [[tr("켜기"),"on"],[tr("끄기"),"off"]])controls.append(button(name,async()=>{await api("/smartthings/command","POST",{device_id:d.deviceId,capability:"switch",command});state.textContent=tr("명령을 전달했습니다. 실제 상태는 ‘상태 확인’으로 갱신하세요.");}));
  card.append(controls,state);$("#smart-devices").append(card);
  });
 }
@@ -122,19 +122,19 @@ function editFlowForm(flow=null){editFlow=flow?.id||null;$("#flow-editor").hidde
 function addStep(step){
   const row=el("div",undefined,"step");row.dataset.type=step.type;
   if(step.type==="delay"){
-    row.append(el("span","기다리기"));const input=el("input");input.type="number";input.min=0;input.max=60;input.value=step.seconds;input.dataset.field="seconds";input.setAttribute("aria-label","대기 시간 (초)");row.append(input,el("span","초"));
+    row.append(el("span",tr("기다리기")));const input=el("input");input.type="number";input.min=0;input.max=60;input.value=step.seconds;input.dataset.field="seconds";input.setAttribute("aria-label",tr("대기 시간 (초)"));row.append(input,el("span",tr("초")));
   }else{
-    const device=el("select");device.dataset.field="device_id";device.setAttribute("aria-label","대상 기기");deviceList.forEach(d=>device.add(new Option(d.label||d.name,d.deviceId)));
-    if(step.device_id&&!deviceList.some(d=>d.deviceId===step.device_id))device.add(new Option("미연결 기기 · "+step.device_id,step.device_id));
+    const device=el("select");device.dataset.field="device_id";device.setAttribute("aria-label",tr("대상 기기"));deviceList.forEach(d=>device.add(new Option(d.label||d.name,d.deviceId)));
+    if(step.device_id&&!deviceList.some(d=>d.deviceId===step.device_id))device.add(new Option(tr("미연결 기기 · ")+step.device_id,step.device_id));
     device.value=step.device_id||device.value;
-    const cmd=el("select");cmd.dataset.field="command";cmd.setAttribute("aria-label","기기 동작");
-    const value=el("input");value.type="number";value.dataset.field="argument";value.setAttribute("aria-label","설정 값");value.placeholder="값";value.value=step.arguments?.[0]??50;
-    const choices={switch:[["on","켜기"],["off","끄기"]],switchLevel:[["setLevel","밝기 설정"]],audioVolume:[["setVolume","음량 설정"],["mute","음소거"],["unmute","음소거 해제"]],colorTemperature:[["setColorTemperature","색온도 설정"]]};
+    const cmd=el("select");cmd.dataset.field="command";cmd.setAttribute("aria-label",tr("기기 동작"));
+    const value=el("input");value.type="number";value.dataset.field="argument";value.setAttribute("aria-label",tr("설정 값"));value.placeholder=tr("값");value.value=step.arguments?.[0]??50;
+    const choices={switch:[["on",tr("켜기")],["off",tr("끄기")]],switchLevel:[["setLevel",tr("밝기 설정")]],audioVolume:[["setVolume",tr("음량 설정")],["mute",tr("음소거")],["unmute",tr("음소거 해제")]],colorTemperature:[["setColorTemperature",tr("색온도 설정")]]};
     function options(){cmd.replaceChildren();const d=deviceList.find(d=>d.deviceId===device.value);const capabilities=d?.components?.find(c=>c.id==="main")?.capabilities?.map(c=>c.id)||[step.capability||"switch"];for(const cap of capabilities)for(const [command,label]of choices[cap]||[])cmd.add(new Option(label,cap+":"+command));if(step.command)cmd.value=(step.capability||"switch")+":"+step.command;update();}
     function update(){const numeric=cmd.value.includes(":set");value.hidden=!numeric;value.min=cmd.value.startsWith("colorTemperature")?2000:0;value.max=cmd.value.startsWith("colorTemperature")?6500:100;}
     cmd.onchange=update;device.onchange=options;options();row.append(device,cmd,value);
   }
-  row.append(button("제거",()=>row.remove()));$("#flow-steps").append(row);
+  row.append(button(tr("제거"),()=>row.remove()));$("#flow-steps").append(row);
 }
 function readStep(row){
   if(row.dataset.type==="delay")return {type:"delay",seconds:Number(row.querySelector("input").value)};
@@ -143,28 +143,28 @@ function readStep(row){
 }
 action("#new-flow",()=>editFlowForm());
 action("#add-delay",()=>addStep({type:"delay",seconds:1}));
-action("#add-device",()=>{if(!deviceList.length){notify("SmartThings 기기를 먼저 연결하세요.");return;}addStep({type:"device"});});
+action("#add-device",()=>{if(!deviceList.length){notify(tr("SmartThings 기기를 먼저 연결하세요."));return;}addStep({type:"device"});});
 $("#flow-form").onsubmit=async e=>{e.preventDefault();try{const steps=[...$("#flow-steps").children].map(readStep);await api("/flows"+(editFlow?"/"+editFlow:""),editFlow?"PUT":"POST",{name:e.target.elements.namedItem("name").value,steps});$("#flow-editor").hidden=true;await loadFlows();}catch(error){notify(error.message);}};
-async function loadCamera(){await loadRoots();flowList=await api("/flows");const state=await api("/camera");$("#camera-detail").textContent=state.error|| (state.recording?"녹화 중 · "+state.record_dir:state.running?"카메라 켜짐":"카메라 꺼짐");if(state.running&&!$("#stream").getAttribute("src"))$("#stream").src="/api/camera/stream";for(const [id,inactive]of Object.entries({"camera-on":state.running,"camera-off":!state.running,"record-on":state.recording||!roots.length,"record-off":!state.recording})){const control=$("#"+id);control.dataset.inactive=String(inactive);control.disabled=inactive;}$("#gesture-enabled").checked=state.gestures;$("#gesture-mappings").replaceChildren();for(const [key,label]of Object.entries({Open_Palm:"손바닥",Closed_Fist:"주먹",Victory:"V 표시",Thumb_Up:"엄지 위",Thumb_Down:"엄지 아래"})){const l=el("label",label);const select=el("select");select.dataset.gesture=key;select.add(new Option("동작 없음",""));select.add(new Option("대시보드에 알림","chat"));flowList.forEach(f=>select.add(new Option("Flow · "+f.name,"flow:"+f.id)));select.value=state.mappings[key]||"";l.append(select);$("#gesture-mappings").append(l);}}
+async function loadCamera(){await loadRoots();flowList=await api("/flows");const state=await api("/camera");$("#camera-detail").textContent=state.error|| (state.recording?tr("녹화 중 · ")+state.record_dir:state.running?tr("카메라 켜짐"):tr("카메라 꺼짐"));if(state.running&&!$("#stream").getAttribute("src"))$("#stream").src="/api/camera/stream";for(const [id,inactive]of Object.entries({"camera-on":state.running,"camera-off":!state.running,"record-on":state.recording||!roots.length,"record-off":!state.recording})){const control=$("#"+id);control.dataset.inactive=String(inactive);control.disabled=inactive;}$("#gesture-enabled").checked=state.gestures;$("#gesture-mappings").replaceChildren();for(const [key,label]of Object.entries({Open_Palm:tr("손바닥"),Closed_Fist:tr("주먹"),Victory:tr("V 표시"),Thumb_Up:tr("엄지 위"),Thumb_Down:tr("엄지 아래")})){const l=el("label",label);const select=el("select");select.dataset.gesture=key;select.add(new Option(tr("동작 없음"),""));select.add(new Option(tr("대시보드에 알림"),"chat"));flowList.forEach(f=>select.add(new Option("Flow · "+f.name,"flow:"+f.id)));select.value=state.mappings[key]||"";l.append(select);$("#gesture-mappings").append(l);}}
 action("#camera-on",async()=>{await api("/camera/start","POST",{});await loadCamera();});
 action("#camera-off",async()=>{$("#stream").removeAttribute("src");await api("/camera/stop","POST",{});await loadCamera();});
 action("#record-on",async()=>{await api("/camera/record","POST",{root_id:Number($("#record-root").value)});await loadCamera();});
-action("#record-off",async()=>{await api("/camera/record/stop","POST",{});await loadCamera();notify("녹화가 저장되었습니다.");});
-action("#save-gestures",async()=>{const mappings={};document.querySelectorAll("[data-gesture]").forEach(s=>mappings[s.dataset.gesture]=s.value);await api("/gestures","POST",{enabled:$("#gesture-enabled").checked,mappings});notify("제스처 설정을 적용했습니다.");});
+action("#record-off",async()=>{await api("/camera/record/stop","POST",{});await loadCamera();notify(tr("녹화가 저장되었습니다."));});
+action("#save-gestures",async()=>{const mappings={};document.querySelectorAll("[data-gesture]").forEach(s=>mappings[s.dataset.gesture]=s.value);await api("/gestures","POST",{enabled:$("#gesture-enabled").checked,mappings});notify(tr("제스처 설정을 적용했습니다."));});
 (async()=>{try{const user=await api("/me");csrf=user.csrf;await loadRoots();await status();page(location.pathname==="/panel"?"home":location.hash.slice(1)||"overview");setInterval(()=>status().catch(()=>{}),5000);}catch(error){notify(error.message);}})();
 
-async function loadShares(){const shares=await api("/shares");$("#shares").replaceChildren();if(!shares.length)$("#shares").append(el("p","활성 SMB 공유가 없습니다.","muted"));shares.forEach(s=>{const row=el("div",undefined,"root-row");row.append(el("span","\\\\127.0.0.1\\Alter-"+s.name+" · "+(s.readonly?"읽기 전용":"읽기/쓰기")+" · "+s.path),button("설정 변경",()=>{$("#share-path").value=s.path;$("#share-form input[name=name]").value=s.name;$("#share-form input[name=readonly]").checked=s.readonly;$("#share-submit").disabled=false;$("#share-form").scrollIntoView({behavior:"smooth",block:"center"});notify("권한을 변경한 뒤 공유 적용을 누르세요. 기존 Windows 연결은 다시 열어야 할 수 있습니다.");}),button("공유 해제",async()=>{await api("/shares/"+s.name,"DELETE");await loadShares();}));$("#shares").append(row);});}
+async function loadShares(){const shares=await api("/shares");$("#shares").replaceChildren();if(!shares.length)$("#shares").append(el("p",tr("활성 SMB 공유가 없습니다."),"muted"));shares.forEach(s=>{const row=el("div",undefined,"root-row");row.append(el("span","\\\\"+location.hostname+"\\Alter-"+s.name+" · "+(s.readonly?tr("읽기 전용"):tr("읽기/쓰기"))+" · "+s.path),button(tr("설정 변경"),()=>{$("#share-path").value=s.path;$("#share-form input[name=name]").value=s.name;$("#share-form input[name=readonly]").checked=s.readonly;$("#share-submit").disabled=false;$("#share-form").scrollIntoView({behavior:"smooth",block:"center"});notify(tr("권한을 변경한 뒤 공유 적용을 누르세요. 기존 Windows 연결은 다시 열어야 할 수 있습니다."));}),button(tr("공유 해제"),async()=>{await api("/shares/"+s.name,"DELETE");await loadShares();}));$("#shares").append(row);});}
 
-async function loadConnection(){const state=await api("/smartthings/connection");$("#oauth-status").textContent=state.connected?(state.error?"인증 갱신에 실패했습니다. 다시 연결하세요.":"삼성 계정이 연결되었습니다."):state.configured?"삼성 계정으로 로그인하여 기기를 연결하세요.":"OAuth 앱 등록을 준비하고 있습니다.";$("#oauth-connect").disabled=!state.configured;$("#oauth-connect").textContent=state.connected?"다시 연결":"삼성 계정으로 연결";$("#oauth-disconnect").hidden=!state.connected;return state;}
+async function loadConnection(){const state=await api("/smartthings/connection");$("#oauth-status").textContent=state.connected?(state.error?tr("인증 갱신에 실패했습니다. 다시 연결하세요."):tr("삼성 계정이 연결되었습니다.")):state.configured?tr("삼성 계정으로 로그인하여 기기를 연결하세요."):tr("OAuth 앱 등록을 준비하고 있습니다.");$("#oauth-connect").disabled=!state.configured;$("#oauth-connect").textContent=state.connected?tr("다시 연결"):tr("삼성 계정으로 연결");$("#oauth-disconnect").hidden=!state.connected;return state;}
 action("#oauth-connect",async()=>{const result=await api("/smartthings/oauth/start","POST",{});location.assign(result.url);});
-action("#oauth-disconnect",async()=>{if(confirm("Alter에 저장된 SmartThings 인증을 지울까요? 삼성 계정의 앱 권한은 별도로 철회할 수 있습니다.")){await api("/smartthings/oauth","DELETE");deviceList=[];$("#smart-devices").replaceChildren();await loadConnection();}});
+action("#oauth-disconnect",async()=>{if(confirm(tr("Alter에 저장된 SmartThings 인증을 지울까요? 삼성 계정의 앱 권한은 별도로 철회할 수 있습니다."))){await api("/smartthings/oauth","DELETE");deviceList=[];$("#smart-devices").replaceChildren();await loadConnection();}});
 
-const motionLabels={Face:"얼굴 감지",Open_Palm:"손바닥",Closed_Fist:"주먹",Victory:"브이",Thumb_Up:"엄지척",Thumb_Down:"엄지다운"};
+const motionLabels={Face:tr("얼굴 감지"),Open_Palm:tr("손바닥"),Closed_Fist:tr("주먹"),Victory:tr("브이"),Thumb_Up:tr("엄지척"),Thumb_Down:tr("엄지다운")};
 async function motionStatus(){
   const s=await api("/motion");
   const observed=Object.keys(s.observed).map(k=>motionLabels[k]).join(", ");
   const event=s.last_event;
-  $("#motion-status").textContent=s.error||(!s.enabled?"감지 중지됨":!s.camera_running?"카메라가 멈췄습니다. 설정을 다시 적용하세요.":`감지 중 · ${observed||"대기 중"} · 처리 ${s.inference_ms}ms`)+(event?` · 최근 ${motionLabels[event.kind]}: ${{running:"Flow 실행 중",completed:"완료",failed:"실패",skipped_busy:"다른 Flow 실행 중으로 생략"}[event.status]||event.status}`:"");
+  $("#motion-status").textContent=s.error||(!s.enabled?tr("감지 중지됨"):!s.camera_running?tr("카메라가 멈췄습니다. 설정을 다시 적용하세요."):tr("감지 중 · {{v0}} · 처리 {{v1}}ms", {v0: observed||tr("대기 중"), v1: s.inference_ms}))+(event?tr(" · 최근 {{v0}}: {{v1}}", {v0: motionLabels[event.kind], v1: {running:tr("Flow 실행 중"),completed:tr("완료"),failed:tr("실패"),skipped_busy:tr("다른 Flow 실행 중으로 생략")}[event.status]||event.status}):"");
   return s;
 }
 async function loadMotion(){
@@ -174,15 +174,15 @@ async function loadMotion(){
   const box=$("#motion-rules");box.replaceChildren();
   for(const [key,title] of Object.entries(motionLabels)){
     const card=el("div",undefined,"card");card.dataset.kind=key;const heading=el("h2",title),glyph=el("i");glyph.dataset.lucide={Face:"scan-face",Open_Palm:"hand",Closed_Fist:"grab",Victory:"hand",Thumb_Up:"thumbs-up",Thumb_Down:"thumbs-down"}[key];glyph.setAttribute("aria-hidden","true");heading.prepend(glyph);card.append(heading);
-    const label=el("label","실행할 Flow"),select=el("select");select.name="flow";select.add(new Option("실행 안 함",""));
+    const label=el("label",tr("실행할 Flow")),select=el("select");select.name="flow";select.add(new Option(tr("실행 안 함"),""));
     available.forEach(f=>select.add(new Option(f.name,f.id)));
-    if(s.mappings[key]&&!available.some(f=>f.id===s.mappings[key]))select.add(new Option("삭제된 Flow · 다시 선택하세요",s.mappings[key]));
+    if(s.mappings[key]&&!available.some(f=>f.id===s.mappings[key]))select.add(new Option(tr("삭제된 Flow · 다시 선택하세요"),s.mappings[key]));
     select.value=s.mappings[key]||"";label.append(select);card.append(label);
     const r=s.rules?.[key]||{};
-    for(const [name,text,value,min,max] of [["hold_seconds","유지 시간 (초)",r.hold_seconds??1,.3,60],["release_seconds","재감지 대기 (초)",r.release_seconds??1.5,.3,60],["repeat_seconds","실행 후 대기 (초)",r.repeat_seconds??5,3,3600]]){
+    for(const [name,text,value,min,max] of [["hold_seconds",tr("유지 시간 (초)"),r.hold_seconds??1,.3,60],["release_seconds",tr("재감지 대기 (초)"),r.release_seconds??1.5,.3,60],["repeat_seconds",tr("실행 후 대기 (초)"),r.repeat_seconds??5,3,3600]]){
       const l=el("label",text),input=el("input");Object.assign(input,{name,type:"number",value,min,max,step:"0.1",required:true});l.append(input);card.append(l);
     }
-    const repeat=el("label","계속 감지되는 동안 반복 실행","check"),check=el("input");check.type="checkbox";check.name="repeat";check.checked=!!r.repeat;repeat.prepend(check);card.append(repeat);box.append(card);
+    const repeat=el("label",tr("계속 감지되는 동안 반복 실행"),"check"),check=el("input");check.type="checkbox";check.name="repeat";check.checked=!!r.repeat;repeat.prepend(check);card.append(repeat);box.append(card);
   }
   $("#motion-save").disabled=false;
 }
@@ -194,18 +194,18 @@ $("#motion-form").onsubmit=async e=>{
       const key=card.dataset.kind;mappings[key]=card.querySelector("[name=flow]").value;rules[key]={repeat:card.querySelector("[name=repeat]").checked};
       ["hold_seconds","release_seconds","repeat_seconds"].forEach(name=>rules[key][name]=Number(card.querySelector(`[name=${name}]`).value));
     });
-    await api("/motion","POST",{enabled:$("#motion-enabled").checked,mappings,rules});await motionStatus();notify("상시 감지 설정을 저장했습니다.");
+    await api("/motion","POST",{enabled:$("#motion-enabled").checked,mappings,rules});await motionStatus();notify(tr("상시 감지 설정을 저장했습니다."));
   }catch(error){notify(error.message);}finally{control.disabled=false;}
 };
 action("#motion-refresh",motionStatus);
-action("#motion-stop",async()=>{const s=await api("/motion");await api("/motion","POST",{enabled:false,mappings:s.mappings,rules:s.rules});$("#motion-enabled").checked=false;await motionStatus();notify("감지를 중지했습니다. 영상과 녹화는 카메라 페이지에서 별도로 끌 수 있습니다.");});
+action("#motion-stop",async()=>{const s=await api("/motion");await api("/motion","POST",{enabled:false,mappings:s.mappings,rules:s.rules});$("#motion-enabled").checked=false;await motionStatus();notify(tr("감지를 중지했습니다. 영상과 녹화는 카메라 페이지에서 별도로 끌 수 있습니다."));});
 action("#motion-preview-toggle",async()=>{
   const box=$("#motion-preview");
-  if(box.hidden){const s=await api("/motion");if(!s.camera_running)throw new Error("상시 감지를 켜거나 카메라를 먼저 켜세요.");$("#motion-stream").src="/api/camera/stream";box.hidden=false;$("#motion-preview-toggle").textContent="미리보기 끄기";}
-  else{$("#motion-stream").removeAttribute("src");box.hidden=true;$("#motion-preview-toggle").textContent="미리보기 켜기";}
+  if(box.hidden){const s=await api("/motion");if(!s.camera_running)throw new Error(tr("상시 감지를 켜거나 카메라를 먼저 켜세요."));$("#motion-stream").src="/api/camera/stream";box.hidden=false;$("#motion-preview-toggle").textContent=tr("미리보기 끄기");}
+  else{$("#motion-stream").removeAttribute("src");box.hidden=true;$("#motion-preview-toggle").textContent=tr("미리보기 켜기");}
 });
 setInterval(()=>{if(!$("#motion").hidden)motionStatus().catch(e=>notify(e.message));},3000);
 
-async function loadCameraOrientation(){const s=await api('/camera');$('#camera-rotation').value=s.orientation.rotation;$('#camera-mirror-horizontal').checked=s.orientation.mirror_horizontal;$('#camera-mirror-vertical').checked=s.orientation.mirror_vertical;$('#camera-orientation-save').disabled=false;$('#camera-orientation-status').textContent=s.recording?'녹화 중 · 변경하려면 녹화를 먼저 중지하세요.':`저장된 방향: 시계 방향 ${s.orientation.rotation}°`;}
-$('#camera-orientation-form').onsubmit=async e=>{e.preventDefault();const b=$('#camera-orientation-save');b.disabled=true;try{await api('/camera/orientation','POST',{rotation:Number($('#camera-rotation').value),mirror_horizontal:$('#camera-mirror-horizontal').checked,mirror_vertical:$('#camera-mirror-vertical').checked});await loadCameraOrientation();notify('카메라 방향을 저장했습니다. 다음 프레임부터 인식에도 적용합니다.');}catch(e){notify(e.message);}finally{b.disabled=false;}};
-action('#camera-orientation-preview',async()=>{const view=$('#camera-orientation-view');if(!view.hidden){$('#camera-orientation-stream').removeAttribute('src');view.hidden=true;$('#camera-orientation-preview').textContent='방향 미리보기 켜기';return;}const s=await api('/camera');if(!s.running)throw new Error('카메라 또는 상시 감지를 먼저 켜세요.');$('#camera-orientation-stream').src='/api/camera/stream';view.hidden=false;$('#camera-orientation-preview').textContent='방향 미리보기 끄기';});
+async function loadCameraOrientation(){const s=await api('/camera');$('#camera-rotation').value=s.orientation.rotation;$('#camera-mirror-horizontal').checked=s.orientation.mirror_horizontal;$('#camera-mirror-vertical').checked=s.orientation.mirror_vertical;$('#camera-orientation-save').disabled=false;$('#camera-orientation-status').textContent=s.recording?tr("녹화 중 · 변경하려면 녹화를 먼저 중지하세요."):tr("저장된 방향: 시계 방향 {{v0}}°", {v0: s.orientation.rotation});}
+$('#camera-orientation-form').onsubmit=async e=>{e.preventDefault();const b=$('#camera-orientation-save');b.disabled=true;try{await api('/camera/orientation','POST',{rotation:Number($('#camera-rotation').value),mirror_horizontal:$('#camera-mirror-horizontal').checked,mirror_vertical:$('#camera-mirror-vertical').checked});await loadCameraOrientation();notify(tr("카메라 방향을 저장했습니다. 다음 프레임부터 인식에도 적용합니다."));}catch(e){notify(e.message);}finally{b.disabled=false;}};
+action('#camera-orientation-preview',async()=>{const view=$('#camera-orientation-view');if(!view.hidden){$('#camera-orientation-stream').removeAttribute('src');view.hidden=true;$('#camera-orientation-preview').textContent=tr("방향 미리보기 켜기");return;}const s=await api('/camera');if(!s.running)throw new Error(tr("카메라 또는 상시 감지를 먼저 켜세요."));$('#camera-orientation-stream').src='/api/camera/stream';view.hidden=false;$('#camera-orientation-preview').textContent=tr("방향 미리보기 끄기");});

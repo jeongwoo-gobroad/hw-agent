@@ -108,11 +108,14 @@ def main():
     code = 0
     steps = [
         ("웹 서버", lambda: wait_for(lambda: healthy("http://127.0.0.1:11977/health"))),
-        ("언어 모델", lambda: wait_for(lambda: healthy(config.LLM_URL + "/health", config.LLM_HEADERS))),
         ("등록 드라이브·공유", restore_storage),
-        ("ngrok HTTPS", lambda: wait_for(tunnel, 60)),
-        ("SmartThings", check_smartthings),
     ]
+    if subprocess.run(['systemctl', 'is-enabled', '--quiet', 'alter-llm'], capture_output=True).returncode == 0:
+        steps.append(("언어 모델", lambda: wait_for(lambda: healthy(config.LLM_URL + "/health", config.LLM_HEADERS))))
+    if os.getenv('NGROK_AUTHTOKEN'):
+        steps.append(("ngrok HTTPS", lambda: wait_for(tunnel, 60)))
+    if os.getenv('SMARTTHINGS_PAT') or smartthings.oauth.load_tokens():
+        steps.append(("SmartThings", check_smartthings))
     for name, check in tqdm(steps, desc="Alter 준비", unit="단계", disable=not sys.stderr.isatty()):
         status["current_step"] = name
         save_status(status)
@@ -143,7 +146,7 @@ def main():
     status["exit_code"] = code
     status.update(running=False, current_step=None)
     save_status(status)
-    print("내부 대시보드: http://127.0.0.1:11977/", flush=True)
+    print("Dashboard: " + os.getenv("DASHBOARD_URL", "http://localhost:11977/"), flush=True)
     print("준비 완료." if code == 0 else "일부 항목에 확인이 필요합니다.", flush=True)
     return code
 
