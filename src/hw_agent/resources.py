@@ -1,6 +1,7 @@
 """System metrics; unavailable GPU counters are never reported as zero load."""
 from pathlib import Path
 import threading
+from . import gpu_metrics
 
 _previous = None
 _lock = threading.Lock()
@@ -36,10 +37,6 @@ def snapshot():
     for line in Path('/proc/meminfo').read_text().splitlines():
         key, value = line.split(':', 1)
         if key in {'MemTotal', 'MemAvailable'}: mem[key] = int(value.split()[0])*1024
-    gpu = None
-    for path in Path('/sys/class/drm').glob('card*/device/gpu_busy_percent'):
-        try: gpu = float(path.read_text()); break
-        except (OSError, ValueError): pass
     return {**temperatures(), 'cpu_percent': cpu, 'ram_percent': round(100*(1-mem['MemAvailable']/mem['MemTotal']),1),
-            'gpu_percent': gpu, 'gpu_note': 'Pi 드라이버가 사용률 계측을 제공하지 않습니다.' if gpu is None else '',
+            **gpu_metrics.snapshot(),
             'inference_device': 'CPU'}

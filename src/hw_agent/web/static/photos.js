@@ -13,8 +13,11 @@ window.photoDashboard=s=>{
   $('#file-progress-bar').max=Math.max(1,f.total||0);if(!f.total_known)$('#file-progress-bar').removeAttribute('value');else $('#file-progress-bar').value=f.files||0;
   $("#resource-load").textContent=`${s.resources.cpu_percent??"—"}% · ${s.resources.ram_percent}%`;
   $("#resource-temperature").textContent=`CPU ${s.resources.cpu_temperature==null?"계측 미지원":s.resources.cpu_temperature+"°C"} · RAM ${s.resources.ram_temperature==null?"온도 센서 없음":s.resources.ram_temperature+"°C"}`;
-  $("#resource-gpu").textContent=s.resources.gpu_percent==null?"계측 미지원":s.resources.gpu_percent+"%";
-  $("#resource-gpu-note").textContent=s.resources.gpu_note||"시스템 전체 GPU 사용률";
+  $("#resource-gpu").textContent=s.resources.gpu_percent==null?(s.resources.gpu_source?"측정 중":"계측 미지원"):s.resources.gpu_percent+"%";
+  const engines=s.resources.gpu_engines||{};
+  const gpuDetails=[["csd","연산"],["render","렌더"],["bin","타일 준비"],["tfu","텍스처"]].filter(([key])=>engines[key]!=null).map(([key,label])=>`${label} ${engines[key]}%`).join(" · ");
+  $("#resource-gpu-note").textContent=[s.resources.gpu_note,gpuDetails].filter(Boolean).join(" · ");
+  $("#resource-gpu").title=s.resources.gpu_source||"";
   $("#photo-job").textContent=photoProgress(s.photos);
   const version=[s.photos.stage,s.photos.done,s.photos.discovered].join(":");
   if(version!==photoJobVersion&&!$("#photos").hidden&&!$("#photo-viewer").open&&photoOffset===0)searchPhotos().catch(e=>notify(e.message));

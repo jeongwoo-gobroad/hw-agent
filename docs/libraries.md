@@ -32,3 +32,11 @@
 간접 의존성의 재현성은 별도 lock/constraints로 관리한다.
 OS 패키지·Python 버전·모델 리비전·런타임 빌드 옵션은 배포 문서에 기록한다.
 라이브러리 선택만으로 성능, 보안, ARM64 호환성, 유지보수 신뢰도가 검증되었다고 쓰지 않는다.
+
+## Pi GPU 검토 (2026-11-03)
+
+- 추론 비교는 기존 모델·커밋을 유지한 [llama.cpp Vulkan 백엔드와 llama-bench](https://github.com/ggml-org/llama.cpp/tree/master/tools/llama-bench)를 사용한다. 자체 추론 엔진이나 비공식 커널 패치를 도입하지 않는다. 실측 조건과 채택 여부는 [모델 기록](models.md)에 남긴다.
+- GPU 계측은 이미 설치된 [Linux V3D 드라이버의 gpu_stats](https://github.com/raspberrypi/linux/blob/rpi-6.18.y/drivers/gpu/drm/v3d/v3d_sysfs.c)를 사용한다. 앱은 두 표본의 누적 시간 차이를 비율로 바꾸고 표시할 뿐, 하드웨어 성능 모니터를 직접 구성하지 않는다. 시스템 패키지 nvtop 3.2.0도 시험했으나 이 장비에서 gpu_util=null을 반환해 대시보드 수집기로 채택하지 않았다.
+- [Raspberry Pi의 LiteRT 소개](https://www.raspberrypi.com/news/mastering-edge-ai-on-raspberry-pi-with-litert-and-gemma/)에는 WebGPU/Vulkan GPU 실행과 CPU/GPU 비교가 공개되어 있다. GPU 지원 자체가 속도 우위를 뜻하지 않는다. 다른 모델·양자화의 공개 수치를 현재 Qwen 모델의 실측치로 쓰지 않는다.
+
+새 Python 의존성은 없다. Vulkan 비교 빌드에만 OS 패키지 `libvulkan-dev`, `glslc`, `spirv-headers`가 필요하다. 운영 설치에 진단용 nvtop을 필수로 요구하지 않는다.

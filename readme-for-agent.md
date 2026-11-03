@@ -130,7 +130,8 @@ repeat_seconds는 실행 시작 간격이 아니라 Flow 완료 후 최소 대�
 - `photos.py`: 독립 photo_roots UUID 등록·안전한 원본 해석·사진/앨범/사람 검색·수정 API. 일반 roots/SMB를 변경하지 않는다.
 - `photo_worker.py`: 별도 systemd 프로세스의 10분 주기 파일 발견, ExifTool 촬영일·Live 연결, 증분 분류, 체크포인트 진행률. 작업 자식 종료로 모델 메모리 반환.
 - `photo_models.py`: CLIP ONNX FP32 다중 주제 + YuNet/SFace 특징 추출. PC GPU 및 원격 추론 없음.
-- `resources.py`: /proc CPU/RAM 차분과 지원되는 DRM GPU 카운터. 미지원값은 null.
+- `resources.py`: /proc CPU/RAM 차분, 온도 센서와 `gpu_metrics.py` 결과를 합친 시스템 상태 API.
+- `gpu_metrics.py`: Linux V3D의 기존 `gpu_stats` 누적 활동 시간을 읽는 얇은 연결 계층. 엔진별 사용률과 최대 엔진 사용률을 반환한다. 첫 표본·카운터 리셋·미지원은 null이며 0%와 구분한다. 1초 캐시로 여러 대시보드의 요청이 측정 간격을 지나치게 줄이지 않게 한다.
 - `web/static/photos.js`: 보관함/사람들/별도 폴더 메뉴·검색·미디어·수동 수정. 공통 status 5초 polling으로 진행률과 처리된 썸네일 갱신.
 - `deploy/alter-photos.service`, `scripts/install-photo-models.py`: 독립 자원 제한과 리비전/SHA256 고정 모델 설치.
 - 상세 DB·API·제한·검증은 [docs/photos.md](docs/photos.md). 모델/문서 변경 시 함께 갱신한다. 사진 DB/얼굴 특징/이름/시험 이미지/원본은 Git에 넣지 않는다.
