@@ -1,6 +1,7 @@
 const $ = s => document.querySelector(s);
 const el = (tag, text, cls) => {const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
 let chatController=null;
+let cameraMirrorPending=false;
 let csrf="", sessionId=null, roots=[], flowList=[], deviceList=[], editFlow=null, offset=0, lastQuery="";
 const titles={photos:tr("기억을 모으는 공간."),photofolders:tr("사진 폴더를 따로 관리하세요."),overview:tr("나의 공간, 한눈에."),files:tr("필요한 파일을 찾아보세요."),chat:tr("얼터와 함께 찾기."),drives:tr("저장장치를 한곳에서."),home:tr("우리 집의 작은 자동화."),camera:tr("지금, 카메라 너머."),motion:tr("움직임으로 연결하는 일상."),settings:tr("나에게 맞게 설정하기.")};
 function notify(text){$("#notice").textContent=text;$("#notice").hidden=false;clearTimeout(notify.timer);notify.timer=setTimeout(()=>$("#notice").hidden=true,7000);}
@@ -24,7 +25,7 @@ function page(name){
 document.querySelectorAll("[data-page]").forEach(b=>b.onclick=()=>page(b.dataset.page));
 document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>page(b.dataset.go));
 action("#logout",async()=>{await api("/logout","POST",{});location.href="/login";});
-async function status(){const s=await api("/status");if(window.photoDashboard)window.photoDashboard(s);$("#file-count").textContent=s.indexed_files.toLocaleString(window.alterLanguage);$("#memory").textContent=size(s.memory.MemAvailable);$("#camera-status").textContent=s.camera.recording?tr("녹화 중"):s.camera.running?tr("켜짐"):tr("꺼짐");$("#gesture-state").textContent=s.camera.last_gesture?.name?tr("최근 인식: ")+({Open_Palm:tr("손바닥"),Closed_Fist:tr("주먹"),Victory:tr("V 표시"),Thumb_Up:tr("엄지 위"),Thumb_Down:tr("엄지 아래")}[s.camera.last_gesture.name]||s.camera.last_gesture.name):s.camera.gestures?tr("손동작 인식 대기 중"):tr("제스처 인식 꺼짐");if(s.gesture_event&&status.lastEvent!==s.gesture_event.time){status.lastEvent=s.gesture_event.time;notify(tr("제스처 감지: ")+s.gesture_event.gesture);}}
+async function status(){const s=await api("/status");if(window.photoDashboard)window.photoDashboard(s);updateCameraMirror(s.camera);$("#file-count").textContent=s.indexed_files.toLocaleString(window.alterLanguage);$("#memory").textContent=size(s.memory.MemAvailable);$("#camera-status").textContent=s.camera.recording?tr("녹화 중"):s.camera.running?tr("켜짐"):tr("꺼짐");$("#gesture-state").textContent=s.camera.last_gesture?.name?tr("최근 인식: ")+({Open_Palm:tr("손바닥"),Closed_Fist:tr("주먹"),Victory:tr("V 표시"),Thumb_Up:tr("엄지 위"),Thumb_Down:tr("엄지 아래")}[s.camera.last_gesture.name]||s.camera.last_gesture.name):s.camera.gestures?tr("손동작 인식 대기 중"):tr("제스처 인식 꺼짐");if(s.gesture_event&&status.lastEvent!==s.gesture_event.time){status.lastEvent=s.gesture_event.time;notify(tr("제스처 감지: ")+s.gesture_event.gesture);}}
 async function loadRoots(){roots=await api("/roots");document.querySelectorAll(".root-select").forEach(select=>{const old=select.value;select.replaceChildren();if(select.name==="root")select.add(new Option(tr("전체 폴더"),"0"));roots.forEach(r=>select.add(new Option(r.label,r.id)));if([...select.options].some(o=>o.value===old))select.value=old;});$("#roots").replaceChildren();if(!roots.length)$("#roots").append(el("p",tr("등록된 폴더가 없습니다. 위에서 드라이브의 폴더를 선택하세요."),"muted"));roots.forEach(r=>{const row=el("div",undefined,"root-row");row.append(el("span",r.path),button(tr("등록 해제"),async()=>{if(!confirm(tr("색인에서 이 폴더를 제외할까요? 원본은 보존됩니다.")))return;await api("/roots/"+r.id,"DELETE");await loadRoots();}));$("#roots").append(row);});}
 async function loadDrives(){const devices=await api("/devices");$("#devices").replaceChildren();if(!devices.length)$("#devices").append(el("p",tr("연결된 외장 저장장치가 없습니다."),"muted"));devices.forEach(d=>{const card=el("div",undefined,"card");card.append(el("h2",d.model||d.name),el("p",`${d.transport} · ${d.fstype} · ${size(d.size)}`),el("p",d.mount||tr("마운트되지 않음")),el("small",tr("남은 공간 ")+size(d.free)),el("p",tr("볼륨 ID · ")+d.uuid,"muted"));if(d.mount)card.append(button(tr("색인 폴더 선택"),()=>browse(d.mount,"index")),button(tr("SMB 폴더 선택"),()=>browse(d.mount,"share")));card.append(button(d.mount?tr("안전하게 해제"):tr("마운트"),async()=>{if(d.mount&&!confirm(tr("이 드라이브를 해제할까요?")))return;const result=await api("/devices/action","POST",{device:d.path,action:d.mount?"unmount":"mount"});notify(result.message);await loadDrives();}));$("#devices").append(card);});await loadRoots();await loadShares();}
 async function browse(path,target="index"){
@@ -145,7 +146,33 @@ action("#new-flow",()=>editFlowForm());
 action("#add-delay",()=>addStep({type:"delay",seconds:1}));
 action("#add-device",()=>{if(!deviceList.length){notify(tr("SmartThings 기기를 먼저 연결하세요."));return;}addStep({type:"device"});});
 $("#flow-form").onsubmit=async e=>{e.preventDefault();try{const steps=[...$("#flow-steps").children].map(readStep);await api("/flows"+(editFlow?"/"+editFlow:""),editFlow?"PUT":"POST",{name:e.target.elements.namedItem("name").value,steps});$("#flow-editor").hidden=true;await loadFlows();}catch(error){notify(error.message);}};
-async function loadCamera(){await loadRoots();flowList=await api("/flows");const state=await api("/camera");$("#camera-detail").textContent=state.error|| (state.recording?tr("녹화 중 · ")+state.record_dir:state.running?tr("카메라 켜짐"):tr("카메라 꺼짐"));if(state.running&&!$("#stream").getAttribute("src"))$("#stream").src="/api/camera/stream";for(const [id,inactive]of Object.entries({"camera-on":state.running,"camera-off":!state.running,"record-on":state.recording||!roots.length,"record-off":!state.recording})){const control=$("#"+id);control.dataset.inactive=String(inactive);control.disabled=inactive;}$("#gesture-enabled").checked=state.gestures;$("#gesture-mappings").replaceChildren();for(const [key,label]of Object.entries({Open_Palm:tr("손바닥"),Closed_Fist:tr("주먹"),Victory:tr("V 표시"),Thumb_Up:tr("엄지 위"),Thumb_Down:tr("엄지 아래")})){const l=el("label",label);const select=el("select");select.dataset.gesture=key;select.add(new Option(tr("동작 없음"),""));select.add(new Option(tr("대시보드에 알림"),"chat"));flowList.forEach(f=>select.add(new Option("Flow · "+f.name,"flow:"+f.id)));select.value=state.mappings[key]||"";l.append(select);$("#gesture-mappings").append(l);}}
+async function loadCamera(){await loadRoots();flowList=await api("/flows");const state=await api("/camera");updateCameraMirror(state);$("#camera-detail").textContent=state.error|| (state.recording?tr("녹화 중 · ")+state.record_dir:state.running?tr("카메라 켜짐"):tr("카메라 꺼짐"));if(state.running&&!$("#stream").getAttribute("src"))$("#stream").src="/api/camera/stream";for(const [id,inactive]of Object.entries({"camera-on":state.running,"camera-off":!state.running,"record-on":state.recording||!roots.length,"record-off":!state.recording})){const control=$("#"+id);control.dataset.inactive=String(inactive);control.disabled=inactive;}$("#gesture-enabled").checked=state.gestures;$("#gesture-mappings").replaceChildren();for(const [key,label]of Object.entries({Open_Palm:tr("손바닥"),Closed_Fist:tr("주먹"),Victory:tr("V 표시"),Thumb_Up:tr("엄지 위"),Thumb_Down:tr("엄지 아래")})){const l=el("label",label);const select=el("select");select.dataset.gesture=key;select.add(new Option(tr("동작 없음"),""));select.add(new Option(tr("대시보드에 알림"),"chat"));flowList.forEach(f=>select.add(new Option("Flow · "+f.name,"flow:"+f.id)));select.value=state.mappings[key]||"";l.append(select);$("#gesture-mappings").append(l);}}
+function updateCameraMirror(state){
+  if(cameraMirrorPending)return;
+  const control=$("#camera-mirror-toggle"), mirrored=state.orientation.mirror_horizontal;
+  control.setAttribute("aria-pressed",String(mirrored));
+  control.dataset.inactive=String(state.recording);
+  control.disabled=state.recording;
+  $("#camera-mirror-label").textContent=mirrored?tr("켜짐"):tr("꺼짐");
+  $("#camera-mirror-note").textContent=state.recording
+    ?tr("녹화 중 · 변경하려면 녹화를 먼저 중지하세요.")
+    :tr("좌우 반전은 미리보기·동작 인식·녹화에 함께 적용됩니다.");
+}
+action("#camera-mirror-toggle",async()=>{
+  cameraMirrorPending=true;
+  let state;
+  try{
+    state=await api("/camera");
+    // 다른 방향 설정을 건드리지 않고 현재 저장된 좌우 반전만 바꾼다.
+    state=await api("/camera/orientation","POST",{
+      ...state.orientation, mirror_horizontal:!state.orientation.mirror_horizontal
+    });
+    notify(tr("카메라 방향을 저장했습니다. 다음 프레임부터 인식에도 적용합니다."));
+  }finally{
+    cameraMirrorPending=false;
+    if(state)updateCameraMirror(state);
+  }
+});
 action("#camera-on",async()=>{await api("/camera/start","POST",{});await loadCamera();});
 action("#camera-off",async()=>{$("#stream").removeAttribute("src");await api("/camera/stop","POST",{});await loadCamera();});
 action("#record-on",async()=>{await api("/camera/record","POST",{root_id:Number($("#record-root").value)});await loadCamera();});

@@ -515,5 +515,6 @@
   "GPU 활동을 측정하는 중입니다.": "Measuring GPU activity.",
   "가장 바쁜 GPU 엔진의 사용률": "Usage of the busiest GPU engine",
   "단계 수: {{count}}": "Steps: {{count}}",
-  "한글 · 두벌식": "Korean · Dubeolsik"
+  "한글 · 두벌식": "Korean · Dubeolsik",
+  "좌우 반전은 미리보기·동작 인식·녹화에 함께 적용됩니다.": "Horizontal flip applies to preview, motion detection and recordings."
 }

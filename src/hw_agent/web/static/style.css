@@ -37,3 +37,6 @@ html[lang="en"] .camera-view:has(img:not([src]))::after{content:"Camera is off"}
 
 #camera-rotation { min-width: 14rem; }
 #flows > .card > button { margin: 0.25rem 0.25rem 0 0; }
+
+#camera-mirror-toggle[aria-pressed="true"]{background:var(--pale);border-color:var(--accent)}
+#camera-mirror-label{margin-left:8px;font-size:12px;opacity:.85}

@@ -32,7 +32,7 @@ Mounts use filesystem UUIDs, not USB enumeration or mount-folder names. Index ro
 
 From the Pi desktop account, run `bash scripts/install-startup.sh`. It enables available services, installs the `/panel` autostart and **Open Alter dashboard** desktop link, and installs display idle control. The project-root `Start-Alter.desktop` starts/checks services; the desktop link only opens Chromium. `./start.sh --no-browser` is suitable for SSH.
 
-The idle timer uses local input activity (including remote desktop input), not server/API traffic. It dims after five minutes and restores brightness on input. It requires a detected backlight and compatible Wayland session. Camera orientation is in Settings; apply display orientation separately in Raspberry Pi OS.
+The idle timer uses local input activity (including remote desktop input), not server/API traffic. It dims after five minutes and restores brightness on input. It requires a detected backlight and compatible Wayland session. Use **Camera → Flip horizontally** to toggle mirroring immediately; the saved state applies to preview, detection and subsequent recordings. It preserves rotation and vertical flip. During recording the button is disabled. Rotation and vertical flip remain in Settings; apply display orientation separately in Raspberry Pi OS.
 
 For Korean speech, run `bash scripts/install-voice.sh` and connect a microphone recognized by the OS. Browser capture needs HTTPS or localhost. The popup keyboard supports Korean and English. Voice transcription/wake phrase currently remains Korean in either UI language. Wake listening uses repeated six-second recording/transcription, with gaps while processing; it is not a dedicated always-listening wake-word model.
 
