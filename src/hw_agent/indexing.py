@@ -1,4 +1,5 @@
 import json
+import logging
 import mimetypes
 import os
 from pathlib import Path
@@ -16,6 +17,7 @@ scan_lock = threading.Lock()
 status = {"running": False, "files": 0, "error": None}
 stop_event = threading.Event()
 EXTRACTOR_VERSION = "2026-10-20.2"
+logger = logging.getLogger(__name__)
 
 
 def tokens(text):
@@ -135,8 +137,9 @@ def scan(force=True):
                                 inventory.acknowledge(c,current,entry,reused=reuse)
                         except InterruptedError: raise
                         except storage.StorageUnavailable: raise
-                        except (OSError,HTTPException):
+                        except (OSError,HTTPException) as exc:
                             storage.root_path(root)
+                            logger.warning('File indexing failed root=%s item=%s code=%s',root['id'],entry['id'],type(exc).__name__)
                             with db.connect() as c:
                                 c.execute('UPDATE files SET seen=? WHERE path=?',(current['generation'],key))
                                 inventory.acknowledge(c,current,entry,error=True)
@@ -162,6 +165,7 @@ def scan(force=True):
                 status['waiting_roots'].append(root['id'])
             except Exception as exc:
                 status['error']=str(getattr(exc,'detail',type(exc).__name__))
+                logger.warning('File scan failed root=%s code=%s',root['id'],type(exc).__name__)
         db.set_state('last_scan',str(time.time()))
         db.set_state('extractor_version',EXTRACTOR_VERSION)
         storage.restore_shares()
@@ -169,6 +173,7 @@ def scan(force=True):
         status['stage']='stopped'
     except Exception as exc:
         status['error']=str(getattr(exc,'detail',type(exc).__name__))
+        logger.warning('File scan failed code=%s',type(exc).__name__)
     finally:
         status['stage']=('stopped' if stop_event.is_set() else 'error' if status['error'] else
                          'waiting_for_storage' if status['waiting_roots'] else 'complete')

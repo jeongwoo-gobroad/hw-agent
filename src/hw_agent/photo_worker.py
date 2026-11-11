@@ -2,6 +2,8 @@
 from datetime import datetime
 import io
 import json
+import logging
+import math
 import os
 from pathlib import Path
 import signal
@@ -21,6 +23,15 @@ from .photo_models import PhotoModels, MODEL_VERSION
 IMAGES = {'.jpg', '.jpeg', '.png', '.heic', '.heif', '.webp', '.tif', '.tiff', '.bmp'}
 VIDEOS = {'.mov', '.mp4', '.m4v', '.mkv', '.avi'}
 stopping = False
+logger = logging.getLogger(__name__)
+
+
+class VideoDecodeError(ValueError):
+    """No sampled frame could be decoded; the original is left untouched."""
+
+
+def retry_delay(attempts):
+    return min(86400, 300 * 2 ** min(9, max(0, int(attempts or 1) - 1)))
 
 
 def progress(**values):
@@ -165,21 +176,46 @@ def discover(root, on_batch=None, discovered_offset=0, force=True, interval=600)
 
 def frames(path, video=False):
     if not video:
-        with Image.open(path) as image:
-            image.draft("RGB", (1920, 1920))
-            image = ImageOps.exif_transpose(image)
-            image.thumbnail((1920, 1920))
-            yield image.convert('RGB')
+        with Image.open(path) as source:
+            try:
+                # 먼저 줄여야 원본 크기의 회전 복사본이 모델과 함께 남지 않는다.
+                source.thumbnail((1920, 1920))
+                ImageOps.exif_transpose(source, in_place=True)
+                image = source.convert('RGB')
+            finally:
+                source.close()
+        yield image
         return
-    probe = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'json', str(path)],
+    probe = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                            '-show_entries', 'stream=duration:format=duration', '-of', 'json', str(path)],
                            capture_output=True, timeout=20, check=True)
-    duration = float(json.loads(probe.stdout).get('format', {}).get('duration', 0))
-    for fraction in (.1, .5, .9):
-        result = subprocess.run(['ffmpeg', '-v', 'error', '-nostdin', '-threads', '1', '-ss', str(duration*fraction),
-                                 '-i', str(path), '-frames:v', '1', '-vf', 'scale=960:-2', '-f', 'image2pipe', '-vcodec', 'mjpeg', '-'],
-                                capture_output=True, timeout=45, check=True)
-        with Image.open(io.BytesIO(result.stdout)) as image:
-            yield image.convert('RGB')
+    metadata = json.loads(probe.stdout)
+    duration = 0
+    for raw in [s.get('duration') for s in metadata.get('streams', [])] + [metadata.get('format', {}).get('duration')]:
+        try: value = float(raw)
+        except (TypeError, ValueError): continue
+        if math.isfinite(value) and value > 0:
+            duration = value
+            break
+    positions = [duration * f for f in (.1, .5, .9)] if duration else [0]
+    decoded = 0
+    # 끝부분에 프레임이 없더라도 앞에서 얻은 정상 프레임은 사용한다.
+    for position in positions + ([0] if duration else []):
+        if position == 0 and decoded: break
+        if paused(): raise InterruptedError()
+        try:
+            result = subprocess.run(['ffmpeg', '-v', 'error', '-nostdin', '-threads', '1', '-ss', str(position),
+                                     '-i', str(path), '-map', '0:v:0', '-frames:v', '1', '-vf', 'scale=960:-2',
+                                     '-pix_fmt', 'yuvj420p', '-threads:v', '1', '-f', 'image2pipe', '-vcodec', 'mjpeg', '-'],
+                                    capture_output=True, timeout=45, check=True)
+            if not result.stdout: continue
+            with Image.open(io.BytesIO(result.stdout)) as image:
+                frame = image.convert('RGB')
+        except (subprocess.SubprocessError, OSError):
+            continue
+        decoded += 1
+        yield frame
+    if not decoded: raise VideoDecodeError('No decodable video frame')
 
 
 def process(item, models):
@@ -233,6 +269,14 @@ def process(item, models):
 
 
 CLASSIFICATION_BATCH = 128
+CLASSIFICATION_RSS_LIMIT = 850 * 1024**2
+
+
+def resident_bytes():
+    try:
+        return int(Path('/proc/self/statm').read_text().split()[1]) * os.sysconf('SC_PAGE_SIZE')
+    except (OSError, ValueError, IndexError):
+        return 0
 
 
 def pending_photos(limit=32, unavailable=()):
@@ -263,6 +307,7 @@ def run_scan():
                 unavailable.add(root['id'])
             except Exception as exc:
                 errors+=1
+                logger.warning('Photo discovery failed root=%s code=%s', root['id'], type(exc).__name__)
                 progress(error=str(getattr(exc,'detail',type(exc).__name__)))
         db.set_state('photo_classify_pending','1')
         state=photos.status()
@@ -274,7 +319,8 @@ def run_scan():
         model=None
         estimate=Estimate()
         done=0
-        while done<CLASSIFICATION_BATCH:
+        recycle=False
+        while done<CLASSIFICATION_BATCH and not recycle:
             pending=pending_photos(min(16,CLASSIFICATION_BATCH-done), unavailable)
             if not pending: break
             for item in pending:
@@ -300,11 +346,21 @@ def run_scan():
                 except Exception as exc:
                     errors+=1
                     with db.connect() as c:
+                        if not attempt_started:
+                            c.execute('UPDATE photos SET attempts=COALESCE(attempts,0)+1 WHERE id=?',(item['id'],))
+                        attempt = c.execute('SELECT attempts FROM photos WHERE id=?',(item['id'],)).fetchone()
                         c.execute('UPDATE photos SET error=?,retry_after=? WHERE id=?',
-                                  (str(getattr(exc,'detail',type(exc).__name__))[:200],time.time()+3600,item['id']))
+                                  (str(getattr(exc,'detail',type(exc).__name__))[:200],time.time()+retry_delay(attempt[0] if attempt else 1),item['id']))
+                    logger.warning('Photo classification failed root=%s item=%s code=%s', item['root'], item['id'], type(exc).__name__)
                 db.set_state('photo_active_item','')
                 done+=1
                 progress(done=done,errors=errors,eta_seconds=estimate.advance(remaining-done))
+                # 라이브러리가 유지한 버퍼는 항목 저장 후 프로세스를 교체해 회수한다.
+                resident=resident_bytes()
+                if resident >= CLASSIFICATION_RSS_LIMIT:
+                    logger.info('Photo worker recycling after %s items resident_mib=%s', done, resident // 1024**2)
+                    recycle=True
+                    break
         more=bool(pending_photos(1, unavailable))
         deferred=db.rows("""SELECT count(*) n FROM photos p WHERE (scores='{}' OR COALESCE(analysis_version,'')!=?)
           AND retry_after>? AND NOT EXISTS(SELECT 1 FROM photos l WHERE l.root=p.root AND l.live_relative=p.relative)""",
@@ -325,8 +381,10 @@ def interrupted_item():
     active=db.state('photo_active_item','')
     if active:
         with db.connect() as c:
-            c.execute("UPDATE photos SET error='작업 중단: 자동 재시도 대기',retry_after=?+min(86400,300*pow(2,min(COALESCE(attempts,1)-1,8))) WHERE id=? AND (scores='{}' OR COALESCE(analysis_version,'')!=?)",
-                      (time.time(),int(active),MODEL_VERSION))
+            item = c.execute('SELECT attempts FROM photos WHERE id=?',(int(active),)).fetchone()
+            c.execute("UPDATE photos SET error='작업 중단: 자동 재시도 대기',retry_after=? WHERE id=? AND (scores='{}' OR COALESCE(analysis_version,'')!=?)",
+                      (time.time()+retry_delay(item[0] if item else 1),int(active),MODEL_VERSION))
+        logger.warning('Photo worker interrupted item=%s', int(active))
         db.set_state('photo_active_item','')
 
 
@@ -356,5 +414,6 @@ def main():
 
 
 if __name__=='__main__':
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s %(name)s: %(message)s')
     if '--scan' in os.sys.argv: run_scan()
     else: main()

@@ -1,13 +1,32 @@
 """Dim the DSI backlight without switching the display off."""
 import fcntl
 import json
+import os
 from pathlib import Path
+import socket
 import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE = ROOT / "data/display-brightness.json"
 PANEL = Path("/sys/class/backlight/panel_backlight@1")
+
+
+def wait_for_display(seconds=90):
+    display = Path(os.getenv('WAYLAND_DISPLAY', 'wayland-0'))
+    if not display.is_absolute():
+        display = Path(os.getenv('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')) / display
+    deadline = time.monotonic() + seconds
+    while True:
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+                connection.settimeout(1)
+                connection.connect(str(display))
+            return
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise RuntimeError('Wayland compositor was not ready within the startup deadline') from None
+            time.sleep(1)
 
 
 def change(action):
@@ -37,4 +56,5 @@ def change(action):
 
 
 if __name__ == "__main__":
-    change(sys.argv[1])
+    if sys.argv[1] == 'wait': wait_for_display()
+    else: change(sys.argv[1])

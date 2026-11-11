@@ -37,3 +37,42 @@ Boot recovery waits up to thirty seconds for registered volumes to appear. If de
 부팅 복구는 등록 볼륨이 나타나기를 최대 30초 기다립니다. 데스크톱 자동 마운트와 겹치면 현재 UUID·마운트 상태를 다시 확인해 이미 정상 연결된 볼륨을 사용합니다. 정상 연결을 해제하지 않습니다. 이전 부팅의 로그 보존 여부는 OS 설정에 따라 다릅니다.
 
 Source deployment helper: `python scripts/deploy.py --host <pi-host> --user <pi-user> --fingerprint <verified-SHA256-base64>`. It uploads tracked sources, checks hashes, prompts for the SSH password and preserves ignored private state. Verify the host key out of band. It does not install dependencies or restart services.
+
+## Media failures and startup logs / 미디어 오류와 시작 로그
+
+Video classification samples the video stream's duration, skips empty or failed individual seeks, and tries the beginning if every seek fails. A clip with no decodable frame remains a failed item. Valid samples from a short clip can still classify its paired Live Photo. Failed media retries use a five-minute exponential delay capped at one day; success clears the counter. Disconnected storage does not consume retries. Existing successful classifications and model versions are preserved.
+
+영상 분류는 영상 스트림 길이를 기준으로 프레임을 추출합니다. 일부 구간을 읽지 못해도 정상 프레임을 사용하며, 모든 구간이 실패하면 시작 부분을 한 번 더 확인합니다. 읽을 수 있는 프레임이 전혀 없으면 실패 상태를 유지합니다. 반복 실패의 재시도 간격은 5분부터 늘어나 최대 하루가 되며, 성공하면 횟수를 초기화합니다. 연결이 끊긴 저장장치는 재시도 횟수를 소모하지 않습니다. 기존 성공 분류와 모델 버전은 유지합니다.
+
+Still images are reduced to fit 1920 × 1920 before EXIF rotation. The source pixel buffer is closed before model inference, avoiding a full-resolution copy being retained alongside the models. This uses Pillow's `thumbnail`, `exif_transpose(in_place=True)` and `close`; it does not modify originals or raise the worker's memory limit.
+
+사진은 1920 × 1920 안에 들어오도록 먼저 축소한 뒤 EXIF 방향을 적용합니다. 모델 추론 전에 원본 픽셀 버퍼를 닫아 고해상도 복사본과 모델이 동시에 메모리를 차지하지 않도록 합니다. Pillow의 축소·방향 보정·버퍼 해제 기능을 사용하며 원본이나 작업자의 메모리 한도를 바꾸지 않습니다.
+
+After committing each classification, the worker checks its resident memory. At 850MiB it ends that batch and lets the supervisor start a fresh process for pending items. This releases buffers retained by native libraries while preserving the completed result, scan generation and queue; it is not a full rescan. The 1200MiB service limit also includes the supervisor and media subprocesses, so a single unusually large item can still reach that limit and be deferred for retry.
+
+각 항목을 저장한 뒤 작업자의 실제 상주 메모리를 확인합니다. 850MiB 이상이면 해당 배치를 마치고 다음 프로세스에서 대기 항목을 이어서 처리해 네이티브 라이브러리의 잔류 버퍼를 회수합니다. 완료 결과·색인 세대·대기열을 유지하며 전체 재색인을 하지 않습니다. 서비스의 1200MiB 한도에는 관리 프로세스와 미디어 처리도 포함되므로, 단일 항목이 지나치게 크면 여전히 한도에 도달해 재시도 대상으로 남을 수 있습니다.
+
+The display idle service waits up to ninety seconds for the Wayland socket before starting its five-minute idle timer. Ordinary server traffic cannot reset that timer. This startup check does not send pointer, keyboard or touch events.
+
+화면 유휴 서비스는 Wayland 연결을 최대 90초 기다린 뒤 5분 유휴 타이머를 시작합니다. 서버 요청은 타이머를 초기화하지 않으며, 준비 확인 과정도 마우스·키보드·터치 입력을 보내지 않습니다.
+
+Inspect `journalctl -u alter -u alter-photos -b` for current-boot worker warnings. New item-failure warnings contain internal IDs and exception classes, without original paths or exception messages. Keep raw system logs private: other OS components may record installation details.
+
+현재 부팅의 작업 오류는 `journalctl -u alter -u alter-photos -b`에서 확인합니다. 새 항목별 오류 기록에는 내부 ID와 예외 종류만 남깁니다. 다른 OS 구성 요소는 설치 정보를 기록할 수 있으므로 원본 시스템 로그를 공개하지 않습니다.
+
+On systems using volatile journals, earlier boots cannot be inspected after a reboot. An administrator can opt into bounded persistent logging with `/etc/systemd/journald.conf.d/99-alter-history.conf`:
+
+휘발성 로그를 사용하는 OS에서는 재부팅 전 기록을 확인할 수 없습니다. 아래 설정으로 디스크 사용량을 제한해 이후 로그를 보존할 수 있습니다. 이미 사라진 로그가 복구되지는 않습니다.
+
+```ini
+[Journal]
+Storage=persistent
+SystemMaxUse=128M
+SystemKeepFree=1G
+RuntimeMaxUse=32M
+MaxRetentionSec=14day
+```
+
+After applying it, restart `systemd-journald` and run `journalctl --flush`. Check for journal files under `/var/log/journal`; configuration alone is not proof that logs were persisted. See [journald settings](https://www.freedesktop.org/software/systemd/man/latest/journald.conf.html) and [journal flushing](https://www.freedesktop.org/software/systemd/man/latest/journalctl.html).
+
+적용 후 `systemd-journald`를 재시작하고 `journalctl --flush`를 실행합니다. `/var/log/journal`에 실제 기록 파일이 생성되는지 확인해야 합니다.

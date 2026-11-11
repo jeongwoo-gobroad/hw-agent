@@ -129,6 +129,47 @@ class StorageResumeTests(unittest.TestCase):
         self.assertEqual(db.state('photo_waiting_storage'), '0')
         self.assertFalse(photo_worker.pending_photos())
 
+    def test_failed_photos_back_off_and_log_codes_without_paths(self):
+        Image.new('RGB', (16,16), 'red').save(self.base / 'sample.jpg')
+        photos.add_root(photos.Folder(path=str(self.base)))
+        root = db.rows('SELECT * FROM photo_roots')[0]
+        with patch.object(photo_worker, 'metadata', return_value=(100,'fixture',None,0)):
+            photo_worker.discover(root)
+        for attempt in (1, 2):
+            with db.connect() as c: c.execute('UPDATE photos SET retry_after=0')
+            with patch.object(photos, 'safe_media', side_effect=PermissionError('private-path-do-not-log')), \
+                 self.assertLogs(photo_worker.logger, level='WARNING') as log:
+                before = photo_worker.time.time()
+                photo_worker.run_scan()
+            item = db.rows('SELECT attempts,retry_after,error FROM photos')[0]
+            self.assertEqual(item['attempts'], attempt)
+            self.assertGreaterEqual(item['retry_after'], before + photo_worker.retry_delay(attempt))
+            self.assertFalse(photo_worker.pending_photos())
+            self.assertIn('PermissionError', ' '.join(log.output))
+            self.assertNotIn('private-path-do-not-log', ' '.join(log.output))
+
+    def test_memory_recycle_commits_item_and_keeps_remaining_queue(self):
+        for name in ('a.jpg', 'b.jpg'):
+            Image.new('RGB', (16,16), 'red').save(self.base / name)
+        photos.add_root(photos.Folder(path=str(self.base)))
+        root = db.rows('SELECT * FROM photo_roots')[0]
+        with patch.object(photo_worker, 'metadata', return_value=(100,'fixture',None,0)):
+            photo_worker.discover(root)
+        generation = inventory.job('photos', root['id'])['generation']
+        class Model:
+            def analyze(self, image): return {'people':.9}, []
+        with patch.object(photo_worker, 'PhotoModels', return_value=Model()), \
+             patch.object(photo_worker, 'resident_bytes', return_value=photo_worker.CLASSIFICATION_RSS_LIMIT):
+            photo_worker.run_scan()
+            self.assertEqual(len(photo_worker.pending_photos()), 1)
+            self.assertEqual(db.state('photo_classify_pending'), '1')
+            self.assertEqual(db.state('photo_active_item'), '')
+            photo_worker.run_scan()
+            self.assertFalse(photo_worker.pending_photos())
+            self.assertEqual(db.state('photo_classify_pending'), '0')
+        self.assertEqual(inventory.job('photos', root['id'])['generation'], generation)
+        self.assertEqual(db.rows('SELECT count(*) n FROM photos WHERE error IS NOT NULL')[0]['n'], 0)
+
     def test_photo_disconnect_after_availability_check_restores_attempt_count(self):
         Image.new('RGB', (16,16), 'red').save(self.base / 'sample.jpg')
         photos.add_root(photos.Folder(path=str(self.base)))

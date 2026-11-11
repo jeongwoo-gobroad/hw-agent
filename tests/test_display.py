@@ -11,6 +11,26 @@ spec.loader.exec_module(brightness)
 
 
 class DisplayTests(unittest.TestCase):
+    def test_wait_handles_late_compositor_without_changing_brightness(self):
+        with patch.dict(brightness.os.environ, {'WAYLAND_DISPLAY':'wayland-test','XDG_RUNTIME_DIR':'/tmp/runtime'}), \
+             patch.object(brightness.socket, 'socket') as factory, \
+             patch.object(brightness.time, 'sleep') as sleep, \
+             patch.object(brightness, 'change', side_effect=AssertionError('no display input')):
+            connection = factory.return_value.__enter__.return_value
+            connection.connect.side_effect = [FileNotFoundError(), None]
+            brightness.wait_for_display()
+            self.assertEqual(connection.connect.call_count, 2)
+            connection.connect.assert_called_with('/tmp/runtime/wayland-test')
+            sleep.assert_called_once_with(1)
+
+    def test_unavailable_compositor_has_bounded_wait(self):
+        with patch.object(brightness.socket, 'socket') as factory, \
+             patch.object(brightness.time, 'monotonic', side_effect=[0, 90]), \
+             patch.object(brightness.time, 'sleep') as sleep:
+            factory.return_value.__enter__.return_value.connect.side_effect = ConnectionRefusedError()
+            with self.assertRaisesRegex(RuntimeError, 'startup deadline'): brightness.wait_for_display()
+            sleep.assert_not_called()
+
     def test_repeated_dim_keeps_original_brightness(self):
         with tempfile.TemporaryDirectory() as directory:
             panel = Path(directory) / "panel"
