@@ -40,6 +40,14 @@ Source deployment helper: `python scripts/deploy.py --host <pi-host> --user <pi-
 
 ## Media failures and startup logs / 미디어 오류와 시작 로그
 
+File read and document-extraction failures have a separate SQLite `file_retries` queue. Attempts and deadlines survive restarts and new scan generations. Retries start after five minutes, double to a maximum one-day interval, and continue until recovery or removal. They run between discovery/processing batches and while idle, without waiting for a whole drive scan. These are earliest retry times: a long current operation can delay them. A disconnected root does not consume attempts. Changed file metadata bypasses the old delay on discovery; successful recovery removes the queue entry. Unsupported formats, size limits, partial extraction and policy-denied paths are not retryable failures.
+
+파일 읽기·문서 추출 오류는 별도 SQLite `file_retries` 큐에 기록합니다. 재시작과 새 검사에서도 횟수·시각을 보존하고 5분부터 최대 하루 간격으로 재시도합니다. 전체 드라이브 검사가 끝나기 전에 배치 사이와 유휴 시간에 처리하며, 큰 파일 처리 중이면 예정 시각보다 늦어질 수 있습니다. 연결 대기는 횟수를 소모하지 않습니다. 변경된 파일은 다음 발견 시 기존 대기를 건너뛰고, 성공하면 큐에서 제거합니다. 미지원 형식·크기 제한·부분 추출·접근 정책 차단은 재시도 대상이 아닙니다.
+
+An unchanged hash never makes a failed extraction reusable. The last successful text stays searchable until recovery; a newly failed document still has searchable metadata. The dashboard reports pending retries separately from completed work. Historical aggregate errors without item records cannot be reconstructed; legacy failed extraction rows are repaired when encountered by the next normal scan. No full index reset is required. See [queue and status details](indexing-security.md).
+
+같은 해시여도 실패한 추출 결과를 재사용하지 않습니다. 복구 전까지 마지막 정상 텍스트를 보존하며, 처음 실패한 문서는 이름 등 메타데이터로 검색할 수 있습니다. 대시보드는 재시도 대기를 별도로 표시합니다. 과거에 합계만 남은 오류는 항목별로 복원할 수 없으며, 기존 추출 실패 행은 다음 일반 검사에서 처리합니다. 전체 색인을 초기화할 필요는 없습니다.
+
 Video classification samples the video stream's duration, skips empty or failed individual seeks, and tries the beginning if every seek fails. A clip with no decodable frame remains a failed item. Valid samples from a short clip can still classify its paired Live Photo. Failed media retries use a five-minute exponential delay capped at one day; success clears the counter. Disconnected storage does not consume retries. Existing successful classifications and model versions are preserved.
 
 영상 분류는 영상 스트림 길이를 기준으로 프레임을 추출합니다. 일부 구간을 읽지 못해도 정상 프레임을 사용하며, 모든 구간이 실패하면 시작 부분을 한 번 더 확인합니다. 읽을 수 있는 프레임이 전혀 없으면 실패 상태를 유지합니다. 반복 실패의 재시도 간격은 5분부터 늘어나 최대 하루가 되며, 성공하면 횟수를 초기화합니다. 연결이 끊긴 저장장치는 재시도 횟수를 소모하지 않습니다. 기존 성공 분류와 모델 버전은 유지합니다.

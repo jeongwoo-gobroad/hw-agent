@@ -45,6 +45,11 @@ def init():
           id TEXT PRIMARY KEY, flow TEXT, status TEXT, log TEXT, created REAL);
         CREATE TABLE IF NOT EXISTS auth(
           token TEXT PRIMARY KEY, csrf TEXT, expires REAL, fingerprint TEXT);
+        CREATE TABLE IF NOT EXISTS file_retries(
+          root INTEGER, relative TEXT, attempts INTEGER NOT NULL DEFAULT 0,
+          retry_after REAL NOT NULL DEFAULT 0, error TEXT, fingerprint TEXT,
+          counted_generation TEXT, PRIMARY KEY(root,relative));
+        CREATE INDEX IF NOT EXISTS file_retries_due ON file_retries(retry_after,root);
         """)
         if "relative_path" not in {row[1] for row in db.execute("PRAGMA table_info(roots)")}:
             migrated = []

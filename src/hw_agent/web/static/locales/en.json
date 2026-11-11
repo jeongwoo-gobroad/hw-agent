@@ -518,5 +518,6 @@
   "한글 · 두벌식": "Korean · Dubeolsik",
   "좌우 반전은 미리보기·동작 인식·녹화에 함께 적용됩니다.": "Horizontal flip applies to preview, motion detection and recordings.",
   "드라이브 연결 대기 · 자동 재개": "Waiting for drive · resumes automatically",
-  "연결 대기": "Waiting for connection"
+  "연결 대기": "Waiting for connection",
+  " · 자동 재시도 {{v0}}개": " · {{v0}} queued for automatic retry"
 }

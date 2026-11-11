@@ -19,7 +19,7 @@ class StorageResumeTests(unittest.TestCase):
     def setUp(self):
         db.init(); photos.init(); inventory.init()
         with db.connect() as c:
-            for table in ('roots','files','staging','search','photo_roots','photos','photo_faces',
+            for table in ('file_retries','roots','files','staging','search','photo_roots','photos','photo_faces',
                           'photo_people','scan_jobs','scan_dirs','scan_entries','state'):
                 c.execute('DELETE FROM ' + table)
         self.directory = tempfile.TemporaryDirectory(dir=sandbox.name)

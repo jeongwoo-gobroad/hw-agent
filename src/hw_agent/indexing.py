@@ -10,7 +10,7 @@ import threading
 import time
 import uuid
 from fastapi import HTTPException
-from . import db, storage, inventory
+from . import db, storage, inventory, file_retries
 from .progress import Estimate
 
 scan_lock = threading.Lock()
@@ -48,6 +48,140 @@ def extract_content(path):
         return '', 'timeout_or_error'
 
 
+def index_entry(root, current, entry, base):
+    relative = entry['relative']
+    key = f"{root['id']}\n{relative}"
+    stat = None
+    try:
+        path = inventory.safe_path(base, relative)
+        stat = path.stat()
+        retry = file_retries.get(root['id'], relative)
+        if retry and retry['retry_after'] > time.time() and retry['fingerprint'] == file_retries.fingerprint(stat):
+            with db.connect() as c:
+                c.execute('UPDATE files SET seen=? WHERE path=?', (current['generation'], key))
+                file_retries.acknowledge_wait(c, root['id'], relative, current, entry)
+            return
+        previous = db.rows('SELECT * FROM files WHERE path=?', (key,))
+        prior = previous[0] if previous else None
+        if prior is None or not inventory.unchanged(prior, stat):
+            legacy = db.rows('SELECT * FROM staging WHERE path=? AND size=? AND modified=? ORDER BY rowid DESC LIMIT 1',
+                             (key, stat.st_size, stat.st_mtime))
+            if legacy: prior = legacy[0]
+        same_metadata = inventory.unchanged(prior, stat)
+        old_hash = prior.get('content_hash') if prior else None
+        hash_due = not old_hash or not same_metadata or time.time()-(prior.get('hash_checked') or 0) >= HASH_INTERVAL
+        digest, checked = old_hash, (prior.get('hash_checked') if prior else None)
+        if hash_due:
+            digest, stat = inventory.digest(path, stop_event.is_set); checked = time.time()
+        same_content = bool(prior and ((old_hash and digest == old_hash) or (not old_hash and same_metadata)))
+        version = (prior.get('extractor_version') or db.state('extractor_version', EXTRACTOR_VERSION)) if prior else None
+        # 내용이 같아도 실패했던 추출 결과는 재사용하지 않는다.
+        reuse = bool(same_content and version == EXTRACTOR_VERSION and not retry and prior['extraction'] in file_retries.ACCEPTED)
+        if reuse: text, extraction = prior['text'], prior['extraction']
+        else: text, extraction = extract_content(path)
+        if inventory.fingerprint(path.stat()) != inventory.fingerprint(stat):
+            raise OSError('File changed during extraction')
+        failed = extraction not in file_retries.ACCEPTED
+        if failed and prior: text = prior['text']
+        with db.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            if not c.execute('SELECT 1 FROM roots WHERE id=?', (root['id'],)).fetchone():
+                inventory.drop(c, 'files', root['id'])
+                c.execute('DELETE FROM file_retries WHERE root=?', (root['id'],))
+                return
+            old = c.execute('SELECT id FROM files WHERE path=?', (key,)).fetchone()
+            needs_fts = not old or not reuse or prior.get('id') != old['id']
+            if old and not needs_fts:
+                c.execute('UPDATE files SET seen=?,modified=?,modified_ns=?,ctime_ns=?,content_hash=?,hash_checked=?,extractor_version=? WHERE id=?',
+                          (current['generation'],stat.st_mtime,stat.st_mtime_ns,stat.st_ctime_ns,digest,checked,EXTRACTOR_VERSION,old['id']))
+            else:
+                c.execute('''INSERT INTO files(root,path,name,ext,mime,size,modified,created,text,extraction,seen,
+                  modified_ns,ctime_ns,content_hash,hash_checked,extractor_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                  ON CONFLICT(path) DO UPDATE SET size=excluded.size,modified=excluded.modified,created=excluded.created,
+                  text=excluded.text,extraction=excluded.extraction,seen=excluded.seen,modified_ns=excluded.modified_ns,
+                  ctime_ns=excluded.ctime_ns,content_hash=excluded.content_hash,hash_checked=excluded.hash_checked,
+                  extractor_version=excluded.extractor_version''',
+                  (root['id'],key,path.name,path.suffix.lower(),mimetypes.guess_type(path.name)[0] or 'application/octet-stream',
+                   stat.st_size,stat.st_mtime,getattr(stat,'st_birthtime',None),text,extraction,current['generation'],
+                   stat.st_mtime_ns,stat.st_ctime_ns,digest,checked,EXTRACTOR_VERSION))
+            identifier = c.execute('SELECT id FROM files WHERE path=?', (key,)).fetchone()[0]
+            if needs_fts:
+                c.execute('DELETE FROM search WHERE rowid=?', (identifier,))
+                c.execute('INSERT INTO search(rowid,name,path,body) VALUES(?,?,?,?)',
+                          (identifier,tokens(path.name),tokens(key),tokens(text)))
+            c.execute('DELETE FROM staging WHERE path=?', (key,))
+            if failed:
+                file_retries.defer(c, root['id'], relative, extraction, stat, current, entry if entry.get('id') is not None else None)
+            else:
+                file_retries.recovered(c, root['id'], relative, current, entry, reuse)
+                if entry.get('id') is not None: inventory.acknowledge(c, current, entry, reused=reuse)
+        if failed:
+            logger.warning('File extraction deferred root=%s item=%s code=%s', root['id'], entry.get('id'), file_retries.error_code(extraction))
+    except InterruptedError: raise
+    except storage.StorageUnavailable: raise
+    except (OSError, HTTPException) as exc:
+        storage.root_path(root)
+        code = f'HTTP{exc.status_code}' if isinstance(exc, HTTPException) else type(exc).__name__
+        with db.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            if not c.execute('SELECT 1 FROM roots WHERE id=?', (root['id'],)).fetchone():
+                inventory.drop(c, 'files', root['id'])
+                c.execute('DELETE FROM file_retries WHERE root=?', (root['id'],))
+                return
+            if isinstance(exc, HTTPException) and exc.status_code == 403:
+                c.execute('DELETE FROM file_retries WHERE root=? AND relative=?', (root['id'], relative))
+                if entry.get('id') is not None: inventory.acknowledge(c, current, entry, error=True)
+                return
+            # 현재 목록에 있던 항목은 읽기에 실패해도 기존 검색 결과를 지우지 않는다.
+            if entry.get('id') is not None:
+                c.execute('UPDATE files SET seen=? WHERE path=?', (current['generation'], key))
+            previous = c.execute('SELECT retry_after FROM file_retries WHERE root=? AND relative=?',
+                                 (root['id'], relative)).fetchone()
+            if stat is None and previous and previous[0] > time.time():
+                file_retries.acknowledge_wait(c, root['id'], relative, current, entry)
+                return
+            file_retries.defer(c, root['id'], relative, code, stat, current, entry if entry.get('id') is not None else None)
+        logger.warning('File indexing deferred root=%s item=%s code=%s', root['id'], entry.get('id'), code)
+
+
+def retry_due(roots, limit=4):
+    by_id = {r['id']:r for r in roots}
+    unavailable = set()
+    processed = 0
+    while processed < limit:
+        eligible = [r for r in by_id if r not in unavailable]
+        if not eligible: break
+        query = 'SELECT * FROM file_retries WHERE retry_after<=? AND root IN (' + ','.join('?' for _ in eligible) + ') ORDER BY retry_after LIMIT ?'
+        rows = db.rows(query, (time.time(), *eligible, limit-processed))
+        if not rows: break
+        for row in rows:
+            if stop_event.is_set(): raise InterruptedError()
+            if row['root'] in unavailable: continue
+            root = by_id[row['root']]
+            current = inventory.job('files', root['id'])
+            if current is None:
+                unavailable.add(root['id'])
+                continue
+            try:
+                # 제외 검사는 드라이브와 원본 경로에 접근하기 전에 한다.
+                storage.check_path(row['relative'])
+                base = storage.root_path(root)
+                entries = db.rows("SELECT id,relative,done FROM scan_entries WHERE kind='files' AND root=? AND relative=?",
+                                  (root['id'],row['relative']))
+                entry = entries[0] if entries else {'id':None,'relative':row['relative'],'done':1}
+                index_entry(root, current, entry, base)
+                processed += 1
+            except storage.StorageUnavailable:
+                unavailable.add(root['id'])
+            except HTTPException as exc:
+                if exc.status_code != 403: raise
+                with db.connect() as c:
+                    c.execute('DELETE FROM file_retries WHERE root=? AND relative=?', (root['id'],row['relative']))
+                processed += 1
+    status.update(file_retries.summary())
+    status['waiting_roots'] = sorted(set(status.get('waiting_roots', [])) | unavailable)
+
+
 def scan(force=True):
     if not scan_lock.acquire(blocking=False): return
     status.update(running=True, files=0, total=0, error=None, eta_seconds=None,
@@ -68,12 +202,22 @@ def scan(force=True):
                           errors=sum(j['errors'] for j in jobs),
                           total_known=all(j['stage']!='discovering' for j in jobs),eta_seconds=eta)
             if stage: status['stage']=stage
+        last_retry = 0
+        def checkpoint(force=False):
+            nonlocal last_retry
+            if force or time.monotonic()-last_retry >= STORAGE_RETRY_INTERVAL:
+                retry_due(roots)
+                last_retry = time.monotonic()
+        def discovered(_):
+            refresh('counting')
+            checkpoint()
         refresh()
+        checkpoint(force=True)
         for root,current in current_jobs:
             try:
                 if current['stage']=='complete': refresh();continue
                 base=storage.root_path(root)
-                current=inventory.discover(current,base,stop_event.is_set,notify=lambda _:refresh('counting'),
+                current=inventory.discover(current,base,stop_event.is_set,notify=discovered,
                                            validate=lambda: storage.root_path(root))
                 refresh('indexing')
                 estimate=Estimate()
@@ -81,72 +225,12 @@ def scan(force=True):
                     base=storage.root_path(root)
                     for entry in entries:
                         if stop_event.is_set(): raise InterruptedError()
-                        key=f"{root['id']}\n{entry['relative']}"
-                        try:
-                            path=inventory.safe_path(base,entry['relative'])
-                            try: stat=path.stat()
-                            except FileNotFoundError:
-                                storage.root_path(root)
-                                with db.connect() as c: inventory.acknowledge(c,current,entry,error=True)
-                                continue
-                            previous=db.rows('SELECT * FROM files WHERE path=?',(key,))
-                            prior=previous[0] if previous else None
-                            # 이전 staging에도 완료한 추출 결과가 있으므로 재사용한다.
-                            if prior is None or not inventory.unchanged(prior,stat):
-                                legacy=db.rows('SELECT * FROM staging WHERE path=? AND size=? AND modified=? ORDER BY rowid DESC LIMIT 1',
-                                               (key,stat.st_size,stat.st_mtime))
-                                if legacy: prior=legacy[0]
-                            same_metadata=inventory.unchanged(prior,stat)
-                            old_hash=prior.get('content_hash') if prior else None
-                            hash_due=not old_hash or not same_metadata or time.time()-(prior.get('hash_checked') or 0)>=HASH_INTERVAL
-                            digest,checked=old_hash,(prior.get('hash_checked') if prior else None)
-                            if hash_due:
-                                digest,stat=inventory.digest(path,stop_event.is_set);checked=time.time()
-                            same_content=bool(prior and ((old_hash and digest==old_hash) or (not old_hash and same_metadata)))
-                            version=(prior.get('extractor_version') or db.state('extractor_version',EXTRACTOR_VERSION)) if prior else None
-                            reuse=same_content and version==EXTRACTOR_VERSION
-                            if reuse: text,extraction=prior['text'],prior['extraction']
-                            else: text,extraction=extract_content(path)
-                            if inventory.fingerprint(path.stat())!=inventory.fingerprint(stat):
-                                raise OSError('File changed during extraction; retry pending item')
-                            with db.connect() as c:
-                                c.execute('BEGIN IMMEDIATE')
-                                if not c.execute('SELECT 1 FROM roots WHERE id=?',(root['id'],)).fetchone():
-                                    inventory.drop(c,'files',root['id']);current=None;break
-                                old=c.execute('SELECT id,content_hash,extractor_version FROM files WHERE path=?',(key,)).fetchone()
-                                needs_fts=not old or not reuse or prior.get('id')!=old['id']
-                                if old and not needs_fts:
-                                    c.execute('UPDATE files SET seen=?,modified=?,modified_ns=?,ctime_ns=?,content_hash=?,hash_checked=?,extractor_version=? WHERE id=?',
-                                              (current['generation'],stat.st_mtime,stat.st_mtime_ns,stat.st_ctime_ns,digest,checked,EXTRACTOR_VERSION,old['id']))
-                                else:
-                                    c.execute("""INSERT INTO files(root,path,name,ext,mime,size,modified,created,text,extraction,seen,
-                                      modified_ns,ctime_ns,content_hash,hash_checked,extractor_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                                      ON CONFLICT(path) DO UPDATE SET size=excluded.size,modified=excluded.modified,created=excluded.created,
-                                      text=excluded.text,extraction=excluded.extraction,seen=excluded.seen,modified_ns=excluded.modified_ns,
-                                      ctime_ns=excluded.ctime_ns,content_hash=excluded.content_hash,hash_checked=excluded.hash_checked,
-                                      extractor_version=excluded.extractor_version""",
-                                      (root['id'],key,path.name,path.suffix.lower(),mimetypes.guess_type(path.name)[0] or 'application/octet-stream',
-                                       stat.st_size,stat.st_mtime,getattr(stat,'st_birthtime',None),text,extraction,current['generation'],
-                                       stat.st_mtime_ns,stat.st_ctime_ns,digest,checked,EXTRACTOR_VERSION))
-                                identifier=c.execute('SELECT id FROM files WHERE path=?',(key,)).fetchone()[0]
-                                if needs_fts:
-                                    c.execute('DELETE FROM search WHERE rowid=?',(identifier,))
-                                    c.execute('INSERT INTO search(rowid,name,path,body) VALUES(?,?,?,?)',
-                                              (identifier,tokens(path.name),tokens(key),tokens(text)))
-                                c.execute('DELETE FROM staging WHERE path=?',(key,))
-                                inventory.acknowledge(c,current,entry,reused=reuse)
-                        except InterruptedError: raise
-                        except storage.StorageUnavailable: raise
-                        except (OSError,HTTPException) as exc:
-                            storage.root_path(root)
-                            logger.warning('File indexing failed root=%s item=%s code=%s',root['id'],entry['id'],type(exc).__name__)
-                            with db.connect() as c:
-                                c.execute('UPDATE files SET seen=? WHERE path=?',(current['generation'],key))
-                                inventory.acknowledge(c,current,entry,error=True)
+                        index_entry(root,current,entry,base)
                         current=inventory.job('files',root['id'])
                         if current is None: break
                         refresh('indexing',estimate.advance(current['total']-current['done']))
                     if current is None: break
+                    checkpoint()
                 if current is None: continue
                 # 삭제 반영은 해당 루트를 끝까지 확인하고 드라이브가 연결된 경우에만 한다.
                 storage.root_path(root)
@@ -158,7 +242,10 @@ def scan(force=True):
                     with db.connect() as c:
                         c.executemany('DELETE FROM search WHERE rowid=?',[(r['id'],) for r in stale])
                         c.executemany('DELETE FROM files WHERE id=?',[(r['id'],) for r in stale])
-                with db.connect() as c: inventory.finish(c,current)
+                with db.connect() as c:
+                    c.execute("""DELETE FROM file_retries WHERE root=? AND NOT EXISTS
+                      (SELECT 1 FROM scan_entries e WHERE e.kind='files' AND e.root=file_retries.root AND e.relative=file_retries.relative)""", (root['id'],))
+                    inventory.finish(c,current)
                 refresh()
             except InterruptedError: raise
             except storage.StorageUnavailable:
@@ -175,8 +262,10 @@ def scan(force=True):
         status['error']=str(getattr(exc,'detail',type(exc).__name__))
         logger.warning('File scan failed code=%s',type(exc).__name__)
     finally:
+        status.update(file_retries.summary())
         status['stage']=('stopped' if stop_event.is_set() else 'error' if status['error'] else
-                         'waiting_for_storage' if status['waiting_roots'] else 'complete')
+                         'waiting_for_storage' if status['waiting_roots'] else
+                         'waiting_for_retry' if status['retry_pending'] else 'complete')
         status['eta_seconds']=0 if status['stage']=='complete' else None
         status['running']=False
         scan_lock.release()
@@ -185,7 +274,10 @@ def scan(force=True):
 def worker():
     while not stop_event.is_set():
         scan(force=False)
-        stop_event.wait(STORAGE_RETRY_INTERVAL if status.get('waiting_roots') else SCAN_INTERVAL)
+        wait = STORAGE_RETRY_INTERVAL if status.get('waiting_roots') else SCAN_INTERVAL
+        if status.get('retry_next_at') is not None:
+            wait = min(wait, max(STORAGE_RETRY_INTERVAL, status['retry_next_at'] - time.time()))
+        stop_event.wait(wait)
 
 
 def search(query="", ext="", root=0, after=None, before=None, date_field="modified", offset=0, rerank=False):

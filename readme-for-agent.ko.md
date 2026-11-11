@@ -13,7 +13,7 @@ README와 [설치 안내](docs/setup.ko.md)부터 읽습니다. 단일 worker Fa
 | `app.py`, `auth.py`, `login_security.py` | 라우트·인증·CSRF·내외부 세션·영속 실패 차단·CAPTCHA |
 | `config.py`, `db.py` | 비공개 설정·SQLite WAL 스키마·트랜잭션 |
 | `storage.py`, `file_browser.py` | UUID 식별·폴더 경계·독립 SMB·읽기 전용 트리 |
-| `inventory.py`, `indexing.py`, `extract.py` | DB 발견 큐·체크포인트·해시/stat 재사용·FTS5/BM25/TF-IDF·제한된 문서 추출 |
+| `inventory.py`, `indexing.py`, `file_retries.py`, `extract.py` | DB 발견·재시도 큐·해시/stat 재사용·FTS5/BM25/TF-IDF·제한된 문서 추출 |
 | `preview.py` | 인증된 미리보기·HEIF·FFmpeg 프록시 캐시 |
 | `photos.py`, `photo_worker.py`, `photo_models.py`, `photo_runtime.py`, `photo_search.py` | 사진 전용 폴더/API·재개 가능한 CLIP/YuNet/SFace 분류·작업 상태·대화 검색 |
 | `chat.py`, `generation.py` | 대화 저장·구조화 라우팅·답변 스트리밍·결과 카드·실행 제안 |
@@ -54,6 +54,10 @@ Windows NTFS 도구는 [별도 유지보수 기능](docs/ntfs-maintenance.md)이
 `storage.registered_path`가 현재 UUID 목록으로 파일·사진 루트를 해석하고 파일시스템 접근 전에 제외 정책을 확인합니다. `StorageUnavailable`은 재개 가능한 409이며 경계·권한 오류와 구분합니다. 루트 목록의 `online`은 볼륨과 폴더를 모두 확인한 결과입니다. 색인 상태의 `waiting_roots`와 `waiting_for_storage`는 연결 대기를 표시하며, 유휴 작업자는 10초 뒤 다시 확인합니다. 발견 중 폴더가 사라지면 연결부터 재검증하고, 연결이 끊긴 항목은 실패 완료로 소비하지 않고 대기열에 남깁니다. 사진 분류도 오프라인 루트의 개별 시도 횟수를 늘리지 않습니다. 복구는 다른 자동 마운터와의 경합을 고려해 helper 실행 후 실제 연결을 재확인합니다. `test_storage_resume.py`, `test_recovery.py`, 기존 작업 재개 테스트로 검증합니다.
 
 ## 실패 복구
+
+`file_retries.py`가 파일 재시도 정책을 담당하고 `db.init`은 기존 작업을 지우지 않고 테이블을 추가합니다. 읽기·추출 실패의 재시도 행, 파일/FTS 결과, 검사 완료 표시는 함께 커밋합니다. 실패 시 마지막 정상 텍스트를 보존하며 정상 추출 상태이고 재시도 행이 없을 때만 캐시를 재사용합니다. 간격은 300초부터 최대86400초까지 두 배씩 늘리고 stat 지문이 바뀌면 횟수를 초기화합니다. 오프라인은 횟수를 소모하지 않고 제외 검사는 루트/경로 확인보다 먼저 합니다. 추출 중을 포함한 등록 해제 시 큐도 지웁니다. 사라진 파일은 발견 작업이 끝나 부재를 확인할 때까지 기존 색인을 보존합니다.
+
+`indexing.retry_due`는 작업 시작과 발견/64개 처리 배치 사이에서 최소10초 간격으로 최대4개를 처리합니다. 오프라인 루트가 다른 루트의 재시도를 막으면 안 됩니다. 유휴 작업자는 다음 재시도 시각에 맞추되 최소10초 후 깨어납니다. `/api/status.index`에는 `retry_pending`, `retry_due`, `retry_next_at`(Unix 시각 또는 null), `waiting_for_retry`를 제공합니다. `counted_generation`으로 복구된 오류 수를 한 번만 조정하며 재실행으로 중복 집계하지 않습니다. 합계만 남은 과거 오류는 항목별로 복원할 수 없습니다. `test_file_retries.py`와 재개·저장장치·경계 테스트로 검증합니다. 실패 복구를 위해 검사 세대나 추출기 버전을 강제로 바꾸지 않습니다.
 
 `photo_worker.frames`는 유한한 영상 스트림 길이를 사용하고 빈 프레임·실패 구간을 건너뜁니다. 모든 구간이 실패하면 0초를 확인하며, 정상 프레임이 전혀 없으면 `VideoDecodeError`를 발생시킵니다. 끝부분의 실패 때문에 앞의 정상 프레임을 버리지 않습니다. `retry_delay`는 5분부터 두 배씩 최대 하루까지 늘어나며 모델 로드 전 실패와 중단 항목에도 적용합니다. 성공하면 횟수를 초기화하고 저장장치 연결 대기는 횟수를 늘리지 않습니다. 실패 항목을 재시도하려고 모델 버전을 올리지 않습니다. `test_media_decoding.py`, `test_storage_resume.py`, `test_photos.py`로 검증합니다.
 

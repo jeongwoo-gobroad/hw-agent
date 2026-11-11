@@ -254,6 +254,7 @@ def delete_root(identifier: int):
         conn.execute("DELETE FROM files WHERE root=?", (identifier,))
         conn.execute("DELETE FROM roots WHERE id=?", (identifier,))
         conn.execute("DELETE FROM staging WHERE root=?", (identifier,))
+        conn.execute("DELETE FROM file_retries WHERE root=?", (identifier,))
         inventory.drop(conn,'files',identifier)
     return {"ok": True}
 

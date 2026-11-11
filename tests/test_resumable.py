@@ -12,7 +12,7 @@ class ResumeTests(unittest.TestCase):
     def setUp(self):
         db.init();photos.init();inventory.init()
         with db.connect() as c:
-            for table in ['scan_jobs','scan_dirs','scan_entries','files','staging','search','roots','photos','photo_roots','photo_faces','photo_people','state']:
+            for table in ['file_retries','scan_jobs','scan_dirs','scan_entries','files','staging','search','roots','photos','photo_roots','photo_faces','photo_people','state']:
                 c.execute('DELETE FROM '+table)
         self.tmp=tempfile.TemporaryDirectory();self.base=Path(self.tmp.name)
         self.patch=patch.object(storage,'devices',return_value=[{'uuid':'resume-test','mount':str(self.base)}]);self.patch.start()
