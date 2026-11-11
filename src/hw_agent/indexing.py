@@ -30,6 +30,7 @@ def tokens(text):
 
 HASH_INTERVAL = 3*86400
 SCAN_INTERVAL = 600
+STORAGE_RETRY_INTERVAL = 10
 TEXT_EXTENSIONS = {'.txt','.md','.csv','.json','.py','.log','.yaml','.yml','.xml','.docx','.hwpx','.pdf','.hwp'}
 
 
@@ -48,7 +49,7 @@ def extract_content(path):
 def scan(force=True):
     if not scan_lock.acquire(blocking=False): return
     status.update(running=True, files=0, total=0, error=None, eta_seconds=None,
-                  total_known=False, stage='counting', reused=0, changed=0, resumed=False)
+                  total_known=False, stage='counting', reused=0, changed=0, resumed=False, waiting_roots=[])
     inventory.init()
     try:
         roots=db.rows('SELECT * FROM roots')
@@ -65,11 +66,13 @@ def scan(force=True):
                           errors=sum(j['errors'] for j in jobs),
                           total_known=all(j['stage']!='discovering' for j in jobs),eta_seconds=eta)
             if stage: status['stage']=stage
+        refresh()
         for root,current in current_jobs:
             try:
                 if current['stage']=='complete': refresh();continue
                 base=storage.root_path(root)
-                current=inventory.discover(current,base,stop_event.is_set,notify=lambda _:refresh('counting'))
+                current=inventory.discover(current,base,stop_event.is_set,notify=lambda _:refresh('counting'),
+                                           validate=lambda: storage.root_path(root))
                 refresh('indexing')
                 estimate=Estimate()
                 while entries:=inventory.pending(current,64):
@@ -81,6 +84,7 @@ def scan(force=True):
                             path=inventory.safe_path(base,entry['relative'])
                             try: stat=path.stat()
                             except FileNotFoundError:
+                                storage.root_path(root)
                                 with db.connect() as c: inventory.acknowledge(c,current,entry,error=True)
                                 continue
                             previous=db.rows('SELECT * FROM files WHERE path=?',(key,))
@@ -130,7 +134,9 @@ def scan(force=True):
                                 c.execute('DELETE FROM staging WHERE path=?',(key,))
                                 inventory.acknowledge(c,current,entry,reused=reuse)
                         except InterruptedError: raise
+                        except storage.StorageUnavailable: raise
                         except (OSError,HTTPException):
+                            storage.root_path(root)
                             with db.connect() as c:
                                 c.execute('UPDATE files SET seen=? WHERE path=?',(current['generation'],key))
                                 inventory.acknowledge(c,current,entry,error=True)
@@ -152,6 +158,8 @@ def scan(force=True):
                 with db.connect() as c: inventory.finish(c,current)
                 refresh()
             except InterruptedError: raise
+            except storage.StorageUnavailable:
+                status['waiting_roots'].append(root['id'])
             except Exception as exc:
                 status['error']=str(getattr(exc,'detail',type(exc).__name__))
         db.set_state('last_scan',str(time.time()))
@@ -162,7 +170,8 @@ def scan(force=True):
     except Exception as exc:
         status['error']=str(getattr(exc,'detail',type(exc).__name__))
     finally:
-        status['stage']='stopped' if stop_event.is_set() else 'error' if status['error'] else 'complete'
+        status['stage']=('stopped' if stop_event.is_set() else 'error' if status['error'] else
+                         'waiting_for_storage' if status['waiting_roots'] else 'complete')
         status['eta_seconds']=0 if status['stage']=='complete' else None
         status['running']=False
         scan_lock.release()
@@ -171,7 +180,7 @@ def scan(force=True):
 def worker():
     while not stop_event.is_set():
         scan(force=False)
-        stop_event.wait(SCAN_INTERVAL)
+        stop_event.wait(STORAGE_RETRY_INTERVAL if status.get('waiting_roots') else SCAN_INTERVAL)
 
 
 def search(query="", ext="", root=0, after=None, before=None, date_field="modified", offset=0, rerank=False):

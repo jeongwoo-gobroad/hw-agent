@@ -224,12 +224,15 @@ def folders(path: str):
 
 @app.get("/api/roots")
 def roots():
-    for root in db.rows("SELECT * FROM roots"):
+    result = db.rows("SELECT * FROM roots")
+    listing = storage.devices()
+    for root in result:
         try:
-            storage.root_path(root)
-        except (HTTPException, FileNotFoundError):
-            pass
-    return db.rows("SELECT * FROM roots")
+            path, device, _ = storage.registered_path(root, listing)
+            root.update(online=True, path=str(path), mount=device['mount'])
+        except (HTTPException, OSError):
+            root['online'] = False
+    return result
 
 
 class Root(BaseModel):

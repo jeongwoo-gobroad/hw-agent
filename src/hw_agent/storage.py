@@ -8,6 +8,13 @@ from fastapi import HTTPException
 from . import db, config
 
 
+class StorageUnavailable(HTTPException):
+    """A registered volume/folder can return without changing its identity."""
+
+    def __init__(self, detail=None):
+        super().__init__(409, detail or translate('외장 드라이브 또는 폴더가 연결되지 않았습니다.'))
+
+
 def devices():
     result = subprocess.run(
         ["lsblk", "-J", "-b", "-o", "NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS,UUID,TRAN,MODEL,SERIAL"],
@@ -76,22 +83,42 @@ def add_root(path):
                    (device["uuid"], relative))[0]
 
 
-def root_path(root):
+def registered_path(root, listing=None):
     check_path(root["path"])
-    device = device_for_uuid(root["uuid"])
-    if device and device["mount"]:
-        relative = Path(root.get("relative_path") or Path(root["path"]).relative_to(root["mount"]))
-        try:
-            p = (Path(device["mount"]) / relative).resolve(strict=True)
-        except OSError:
-            raise HTTPException(409, translate('등록된 폴더가 현재 드라이브에 없습니다.'))
-        if p.is_relative_to(Path(device["mount"]).resolve()) and p.is_dir():
-            if root["mount"] != device["mount"] or not root.get("relative_path"):
-                with db.connect() as conn:
-                    conn.execute("UPDATE roots SET path=?,mount=?,relative_path=? WHERE id=?",
-                                 (str(p),device["mount"],str(relative),root["id"]))
-            return p
-    raise HTTPException(409, translate('외장 드라이브 또는 폴더가 연결되지 않았습니다.'))
+    relative = Path(root.get("relative_path") or Path(root["path"]).relative_to(root["mount"]))
+    check_path(relative)
+    if relative.is_absolute() or '..' in relative.parts:
+        raise HTTPException(403, translate('등록 폴더 밖의 경로입니다.'))
+    device = device_for_uuid(root["uuid"], listing)
+    if not device or not device["mount"]:
+        raise StorageUnavailable()
+    try:
+        base = Path(device["mount"]).resolve(strict=True)
+        check_path(base)
+        candidate = base
+        for part in relative.parts:
+            candidate = candidate / part
+            check_path(candidate)
+            if candidate.is_symlink():
+                raise HTTPException(403, translate('심볼릭 링크는 처리하지 않습니다.'))
+        p = candidate.resolve(strict=True)
+        check_path(p)
+        if not p.is_relative_to(base):
+            raise HTTPException(403, translate('등록 폴더 밖의 경로입니다.'))
+        if not p.is_dir():
+            raise StorageUnavailable(translate('등록된 폴더가 현재 드라이브에 없습니다.'))
+    except (FileNotFoundError, NotADirectoryError):
+        raise StorageUnavailable(translate('등록된 폴더가 현재 드라이브에 없습니다.')) from None
+    return p, device, relative
+
+
+def root_path(root):
+    p, device, relative = registered_path(root)
+    if root['mount'] != device['mount'] or root['path'] != str(p) or not root.get('relative_path'):
+        with db.connect() as conn:
+            conn.execute("UPDATE roots SET path=?,mount=?,relative_path=? WHERE id=?",
+                         (str(p), device['mount'], str(relative), root['id']))
+    return p
 
 
 def safe_file(file_id):

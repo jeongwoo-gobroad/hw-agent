@@ -31,7 +31,8 @@ class RecoveryTests(unittest.TestCase):
     def test_mounts_share_only_volume_without_index_root(self):
         db.set_state("shares", '{"files":{"uuid":"share-only"}}')
         devices = [{"uuid": "share-only", "mount": None, "path": "/dev/sdc1"}]
-        with patch.object(recovery.storage, "devices", return_value=devices), \
+        mounted = [{**devices[0], 'mount': '/mnt/test'}]
+        with patch.object(recovery.storage, "devices", side_effect=[devices, devices, mounted]), \
              patch.object(recovery.storage, "restore_shares"), \
              patch.object(recovery.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as run:
             self.assertEqual(recovery.restore_storage(), {"registered": 1, "missing": 0})
@@ -45,12 +46,40 @@ class RecoveryTests(unittest.TestCase):
                                ("/mnt/test/folder", "known", "/mnt/test", "test"))
         devices = [{"uuid": "known", "mount": None, "path": "/dev/sda1"},
                    {"uuid": "unregistered", "mount": None, "path": "/dev/sdb1"}]
-        with patch.object(recovery.storage, "devices", return_value=devices), \
+        mounted = [{**devices[0], 'mount': '/mnt/test'}, devices[1]]
+        with patch.object(recovery.storage, "devices", side_effect=[devices, devices, mounted]), \
              patch.object(recovery.storage, "restore_shares"), \
              patch.object(recovery.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as run:
             self.assertEqual(recovery.restore_storage(), {"registered": 1, "missing": 0})
             self.assertEqual(run.call_count, 1)
             self.assertIn("/dev/sda1", run.call_args.kwargs["input"])
+
+    def test_desktop_mount_race_is_success_when_volume_is_now_mounted(self):
+        db.set_state('shares', '{"files":{"uuid":"race"}}')
+        unmounted = [{'uuid': 'race', 'mount': None, 'path': '/dev/sdc1'}]
+        mounted = [{**unmounted[0], 'mount': '/media/test'}]
+        with patch.object(recovery.storage, 'devices', side_effect=[unmounted, unmounted, mounted]), \
+             patch.object(recovery.storage, 'restore_shares'), \
+             patch.object(recovery.subprocess, 'run', return_value=SimpleNamespace(returncode=1)):
+            self.assertEqual(recovery.restore_storage(), {'registered': 1, 'missing': 0})
+
+    def test_mount_success_exit_without_mounted_volume_is_not_ready(self):
+        db.set_state('shares', '{"files":{"uuid":"race"}}')
+        with patch.object(recovery.storage, 'devices', return_value=[{'uuid':'race','mount':None,'path':'/dev/sdc1'}]), \
+             patch.object(recovery.storage, 'restore_shares') as shares, \
+             patch.object(recovery.subprocess, 'run', return_value=SimpleNamespace(returncode=0)):
+            with self.assertRaises(RuntimeError): recovery.restore_storage()
+            shares.assert_not_called()
+
+    def test_waits_for_delayed_registered_volume_without_touching_unknown_volume(self):
+        db.set_state('shares', '{"files":{"uuid":"late"}}')
+        mounted = [{'uuid':'late','mount':'/media/test','path':'/dev/sdc1'}]
+        with patch.object(recovery.storage, 'devices', side_effect=[[], mounted, mounted]), \
+             patch.object(recovery.storage, 'restore_shares'), \
+             patch.object(recovery.time, 'sleep'), \
+             patch.object(recovery.subprocess, 'run') as run:
+            self.assertEqual(recovery.restore_storage(wait_seconds=10), {'registered':1,'missing':0})
+            run.assert_not_called()
 
     def test_refreshes_once_after_expired_access(self):
         with patch.object(recovery.smartthings, "devices",

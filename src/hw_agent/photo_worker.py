@@ -63,7 +63,8 @@ def discover(root, on_batch=None, discovered_offset=0, force=True, interval=600)
     if current['stage']=='complete': return True
     current=inventory.discover(current,base,paused,IMAGES|VIDEOS,
         lambda j:progress(stage='counting',inventory_total=discovered_offset+j['total'],
-                          discovered=discovered_offset+j['done'],resumed=j['done']>0))
+                          discovered=discovered_offset+j['done'],resumed=j['done']>0),
+        validate=lambda: photos.root_path(root))
     progress(stage='discovering',discovery_complete=False,inventory_total=discovered_offset+current['total'],
              discovered=discovered_offset+current['done'],discovery_started=time.time(),resumed=current['done']>0)
     estimate=Estimate()
@@ -75,6 +76,7 @@ def discover(root, on_batch=None, discovered_offset=0, force=True, interval=600)
                 path=inventory.safe_path(base,entry['relative'])
                 try: stat=path.stat()
                 except FileNotFoundError:
+                    photos.root_path(root)
                     with db.connect() as c: inventory.acknowledge(c,current,entry,error=True)
                     continue
                 previous=db.rows('SELECT * FROM photos WHERE root=? AND relative=?',(root['id'],entry['relative']))
@@ -116,7 +118,9 @@ def discover(root, on_batch=None, discovered_offset=0, force=True, interval=600)
                            content,duration,stat.st_mtime_ns,stat.st_ctime_ns,digest,checked))
                     inventory.acknowledge(c,current,entry,reused=reuse)
             except InterruptedError: raise
+            except storage.StorageUnavailable: raise
             except (OSError,HTTPException):
+                photos.root_path(root)
                 with db.connect() as c:
                     c.execute('UPDATE photos SET seen=? WHERE root=? AND relative=?',(generation,root['id'],entry['relative']))
                     inventory.acknowledge(c,current,entry,error=True)
@@ -231,16 +235,18 @@ def process(item, models):
 CLASSIFICATION_BATCH = 128
 
 
-def pending_photos(limit=32):
+def pending_photos(limit=32, unavailable=()):
+    excluded = ' AND p.root NOT IN (' + ','.join('?' for _ in unavailable) + ')' if unavailable else ''
     return db.rows("""SELECT p.* FROM photos p WHERE (scores='{}' OR COALESCE(analysis_version,'')!=?)
       AND COALESCE(retry_after,0)<=? AND NOT EXISTS
-      (SELECT 1 FROM photos l WHERE l.root=p.root AND l.live_relative=p.relative) ORDER BY id LIMIT ?""",
-      (MODEL_VERSION,time.time(),limit))
+      (SELECT 1 FROM photos l WHERE l.root=p.root AND l.live_relative=p.relative)""" + excluded + ' ORDER BY id LIMIT ?',
+      (MODEL_VERSION,time.time(),*unavailable,limit))
 
 
 def run_scan():
-    progress(running=True,error=None,eta_seconds=None,discovery_complete=False)
+    progress(running=True,error=None,eta_seconds=None,discovery_complete=False,waiting_roots=[])
     errors=0
+    unavailable=set()
     classification_pending=db.state('photo_classify_pending','0')=='1'
     try:
         offset=0
@@ -253,6 +259,8 @@ def run_scan():
                 offset+=current['total']
                 errors+=current['errors']
             except InterruptedError: raise
+            except storage.StorageUnavailable:
+                unavailable.add(root['id'])
             except Exception as exc:
                 errors+=1
                 progress(error=str(getattr(exc,'detail',type(exc).__name__)))
@@ -267,18 +275,23 @@ def run_scan():
         estimate=Estimate()
         done=0
         while done<CLASSIFICATION_BATCH:
-            pending=pending_photos(min(16,CLASSIFICATION_BATCH-done))
+            pending=pending_photos(min(16,CLASSIFICATION_BATCH-done), unavailable)
             if not pending: break
             for item in pending:
                 if paused(): raise InterruptedError()
-                db.set_state('photo_active_item',str(item['id']))
-                with db.connect() as c:
-                    c.execute('UPDATE photos SET attempts=COALESCE(attempts,0)+1 WHERE id=?',(item['id'],))
+                if item['root'] in unavailable: continue
                 try:
                     photos.safe_media(item['id'])
+                    db.set_state('photo_active_item',str(item['id']))
+                    with db.connect() as c:
+                        c.execute('UPDATE photos SET attempts=COALESCE(attempts,0)+1 WHERE id=?',(item['id'],))
                     if model is None: model=PhotoModels()
                     process(item,model)
                 except InterruptedError: raise
+                except storage.StorageUnavailable:
+                    unavailable.add(item['root'])
+                    db.set_state('photo_active_item','')
+                    continue
                 except Exception as exc:
                     errors+=1
                     with db.connect() as c:
@@ -287,13 +300,15 @@ def run_scan():
                 db.set_state('photo_active_item','')
                 done+=1
                 progress(done=done,errors=errors,eta_seconds=estimate.advance(remaining-done))
-        more=bool(pending_photos(1))
+        more=bool(pending_photos(1, unavailable))
         deferred=db.rows("""SELECT count(*) n FROM photos p WHERE (scores='{}' OR COALESCE(analysis_version,'')!=?)
           AND retry_after>? AND NOT EXISTS(SELECT 1 FROM photos l WHERE l.root=p.root AND l.live_relative=p.relative)""",
           (MODEL_VERSION,time.time()))[0]['n']
         db.set_state('photo_classify_pending','1' if more else '0')
-        if not more: db.set_state('photo_last_complete',str(time.time()))
-        progress(stage='classifying' if more else 'waiting' if deferred else 'complete',running=False,errors=max(errors,deferred),
+        db.set_state('photo_waiting_storage','1' if unavailable else '0')
+        if not more and not unavailable: db.set_state('photo_last_complete',str(time.time()))
+        progress(stage='classifying' if more else 'waiting_for_storage' if unavailable else 'waiting' if deferred else 'complete',running=False,errors=max(errors,deferred),
+                 waiting_roots=sorted(unavailable),
                  deferred=deferred,eta_seconds=estimate.advance(max(0,remaining-done)) if more else None if deferred or errors else 0)
     except InterruptedError:
         progress(stage='paused',running=False,eta_seconds=None)
@@ -320,7 +335,7 @@ def main():
         photo_runtime.heartbeat()
         requested=float(db.state('photo_scan_requested','0'))
         unfinished=db.rows("SELECT 1 FROM scan_jobs WHERE kind='photos' AND stage!='complete' LIMIT 1")
-        if not paused() and (unfinished or db.state('photo_classify_pending','0')=='1' or requested>last or time.time()-last>600):
+        if not paused() and (unfinished or db.state('photo_waiting_storage','0')=='1' or db.state('photo_classify_pending','0')=='1' or requested>last or time.time()-last>600):
             child=subprocess.Popen([os.sys.executable,'-m','hw_agent.photo_worker','--scan'])
             while child.poll() is None and not stopping:
                 photo_runtime.heartbeat();time.sleep(2)

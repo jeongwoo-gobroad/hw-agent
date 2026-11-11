@@ -46,7 +46,7 @@ def tunnel():
     return url if url and healthy(url + "/health") else None
 
 
-def restore_storage():
+def restore_storage(wait_seconds=0):
     with db.connect() as connection:
         # 큰 색인 전체 검사는 부팅마다 하지 않고 명시적인 진단으로 분리한다.
         registered = {row[0] for row in connection.execute("SELECT uuid FROM roots")}
@@ -56,18 +56,24 @@ def restore_storage():
     registered.update(share["uuid"] for share in json.loads(db.state("shares", "{}")).values())
     present = set()
     listing = storage.devices()
+    deadline = time.monotonic() + wait_seconds
+    while registered - {d['uuid'] for d in listing} and time.monotonic() < deadline:
+        time.sleep(2)
+        listing = storage.devices()
     for identifier in registered:
-        device = storage.device_for_uuid(identifier, listing)
+        device = storage.device_for_uuid(identifier)
         if not device:
             continue
-        present.add(device["uuid"])
         if not device["mount"]:
-            result = subprocess.run(
+            subprocess.run(
                 ["sudo", "-n", "/usr/local/sbin/alter-disk"],
                 input=json.dumps({"action": "mount", "device": device["path"]}),
                 capture_output=True, text=True, timeout=40)
-            if result.returncode:
+            # 데스크톱 자동 마운트가 먼저 끝났다면 그 연결을 그대로 사용한다.
+            device = storage.device_for_uuid(identifier)
+            if not device or not device['mount']:
                 raise RuntimeError("등록 드라이브 마운트 실패. 디스크 상태를 확인하세요.")
+        present.add(device["uuid"])
     storage.restore_shares()
     return {"registered": len(registered), "missing": len(registered - present)}
 
@@ -108,7 +114,7 @@ def main():
     code = 0
     steps = [
         ("웹 서버", lambda: wait_for(lambda: healthy("http://127.0.0.1:11977/health"))),
-        ("등록 드라이브·공유", restore_storage),
+        ("등록 드라이브·공유", lambda: restore_storage(wait_seconds=30)),
     ]
     if subprocess.run(['systemctl', 'is-enabled', '--quiet', 'alter-llm'], capture_output=True).returncode == 0:
         steps.append(("언어 모델", lambda: wait_for(lambda: healthy(config.LLM_URL + "/health", config.LLM_HEADERS))))

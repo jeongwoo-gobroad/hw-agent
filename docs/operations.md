@@ -28,4 +28,12 @@ File/photo queues persist in SQLite. Startup does not delete indexes or force co
 
 파일·사진 DB와 작업 위치를 보존하며 재부팅 때문에 전체 재색인하지 않습니다. 손상된 파일시스템이나 DB를 자동 초기화하지 않습니다. 정상 부팅·화면·SMB·카메라는 각각 검증해야 합니다.
 
+When a registered drive or folder is unavailable, indexing shows **Waiting for drive** and checks again every ten seconds while idle. It resumes the saved queue after reconnection and retains completed extraction and classification. Offline photo roots do not consume per-photo classification retries. Folder status checks the folder itself as well as its volume. A renamed folder requires an updated registration; a different drive at the old mount path is never substituted.
+
+Boot recovery waits up to thirty seconds for registered volumes to appear. If desktop automount wins a mount race, recovery checks the current UUID/mount and uses that connection. It does not unmount a working volume. Earlier-boot journal history depends on the OS logging configuration.
+
+등록 드라이브·폴더가 준비되지 않으면 **드라이브 연결 대기**로 표시하고, 유휴 상태에서는 10초마다 확인해 저장된 작업 위치에서 재개합니다. 완료한 추출·사진 분류는 유지하며, 오프라인 사진 폴더 때문에 개별 사진의 재시도 횟수를 소모하지 않습니다. 폴더 상태는 볼륨 연결뿐 아니라 해당 폴더의 존재도 확인합니다. 폴더 이름을 바꿨다면 등록을 수정해야 하며, 이전 경로에 다른 드라이브가 연결되어도 대체 사용하지 않습니다.
+
+부팅 복구는 등록 볼륨이 나타나기를 최대 30초 기다립니다. 데스크톱 자동 마운트와 겹치면 현재 UUID·마운트 상태를 다시 확인해 이미 정상 연결된 볼륨을 사용합니다. 정상 연결을 해제하지 않습니다. 이전 부팅의 로그 보존 여부는 OS 설정에 따라 다릅니다.
+
 Source deployment helper: `python scripts/deploy.py --host <pi-host> --user <pi-user> --fingerprint <verified-SHA256-base64>`. It uploads tracked sources, checks hashes, prompts for the SSH password and preserves ignored private state. Verify the host key out of band. It does not install dependencies or restart services.

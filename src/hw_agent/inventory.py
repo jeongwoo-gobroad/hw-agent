@@ -68,7 +68,7 @@ def safe_path(base, relative):
     return target
 
 
-def discover(current, base, cancelled, extensions=None, notify=None):
+def discover(current, base, cancelled, extensions=None, notify=None, validate=None):
     kind,root=current['kind'],current['root']
     if current['stage']!='discovering': return current
     while True:
@@ -103,10 +103,12 @@ def discover(current, base, cancelled, extensions=None, notify=None):
                         files.append((kind,root,child))
                     if len(files)+len(dirs)>=BATCH: flush()
         except FileNotFoundError:
+            if validate: validate()
             if not base.is_dir(): raise
         flush()
         with db.connect() as c:
             c.execute('UPDATE scan_dirs SET done=1 WHERE kind=? AND root=? AND relative=?',(kind,root,relative))
+    if validate: validate()
     with db.connect() as c:
         c.execute("UPDATE scan_jobs SET stage='processing' WHERE kind=? AND root=?",(kind,root))
     return job(kind,root)

@@ -47,19 +47,7 @@ def init():
 
 
 def root_path(root):
-    storage.check_path(root['path'])
-    storage.check_path(root['relative_path'])
-    device = storage.device_for_uuid(root['uuid'])
-    if not device or not device['mount']:
-        raise HTTPException(409, translate('사진 드라이브가 연결되지 않았습니다.'))
-    base = Path(device['mount']).resolve(strict=True)
-    candidate = base / root['relative_path']
-    storage.check_path(candidate)
-    path = candidate.resolve(strict=True)
-    storage.check_path(path)
-    if not path.is_relative_to(base) or not path.is_dir():
-        raise HTTPException(403, translate('사진 폴더 경계를 벗어났습니다.'))
-    return path
+    return storage.registered_path(root)[0]
 
 
 def safe_media(identifier, live=False):
@@ -95,10 +83,11 @@ def roots():
     result = db.rows('SELECT * FROM photo_roots ORDER BY id')
     listing = storage.devices()
     for root in result:
-        device = storage.device_for_uuid(root['uuid'], listing)
-        root['online'] = bool(device and device['mount'])
-        if root['online']:
-            root['path'] = str(Path(device['mount']) / root['relative_path'])
+        try:
+            path, device, _ = storage.registered_path(root, listing)
+            root.update(online=True, path=str(path), mount=device['mount'])
+        except (HTTPException, OSError):
+            root['online'] = False
     return result
 
 
