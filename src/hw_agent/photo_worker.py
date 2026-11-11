@@ -280,15 +280,20 @@ def run_scan():
             for item in pending:
                 if paused(): raise InterruptedError()
                 if item['root'] in unavailable: continue
+                attempt_started=False
                 try:
                     photos.safe_media(item['id'])
                     db.set_state('photo_active_item',str(item['id']))
                     with db.connect() as c:
                         c.execute('UPDATE photos SET attempts=COALESCE(attempts,0)+1 WHERE id=?',(item['id'],))
+                    attempt_started=True
                     if model is None: model=PhotoModels()
                     process(item,model)
                 except InterruptedError: raise
                 except storage.StorageUnavailable:
+                    if attempt_started:
+                        with db.connect() as c:
+                            c.execute('UPDATE photos SET attempts=max(0,COALESCE(attempts,0)-1) WHERE id=?',(item['id'],))
                     unavailable.add(item['root'])
                     db.set_state('photo_active_item','')
                     continue
@@ -309,7 +314,7 @@ def run_scan():
         if not more and not unavailable: db.set_state('photo_last_complete',str(time.time()))
         progress(stage='classifying' if more else 'waiting_for_storage' if unavailable else 'waiting' if deferred else 'complete',running=False,errors=max(errors,deferred),
                  waiting_roots=sorted(unavailable),
-                 deferred=deferred,eta_seconds=estimate.advance(max(0,remaining-done)) if more else None if deferred or errors else 0)
+                 deferred=deferred,eta_seconds=estimate.advance(max(0,remaining-done)) if more else None if unavailable or deferred or errors else 0)
     except InterruptedError:
         progress(stage='paused',running=False,eta_seconds=None)
     finally:

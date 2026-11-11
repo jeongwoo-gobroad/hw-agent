@@ -119,6 +119,7 @@ class StorageResumeTests(unittest.TestCase):
         self.assertEqual(before, db.rows('SELECT id,attempts,retry_after,error FROM photos'))
         self.assertEqual(db.state('photo_waiting_storage'), '1')
         self.assertEqual(photos.status()['stage'], 'waiting_for_storage')
+        self.assertIsNone(photos.status()['eta_seconds'])
         def process(item, _):
             with db.connect() as c:
                 c.execute('UPDATE photos SET scores=?,analysis_version=? WHERE id=?',
@@ -127,6 +128,20 @@ class StorageResumeTests(unittest.TestCase):
              patch.object(photo_worker, 'process', side_effect=process): photo_worker.run_scan()
         self.assertEqual(db.state('photo_waiting_storage'), '0')
         self.assertFalse(photo_worker.pending_photos())
+
+    def test_photo_disconnect_after_availability_check_restores_attempt_count(self):
+        Image.new('RGB', (16,16), 'red').save(self.base / 'sample.jpg')
+        photos.add_root(photos.Folder(path=str(self.base)))
+        root = db.rows('SELECT * FROM photo_roots')[0]
+        with patch.object(photo_worker, 'metadata', return_value=(100,'fixture',None,0)):
+            photo_worker.discover(root)
+        with patch.object(photo_worker, 'PhotoModels', return_value=None), \
+             patch.object(photo_worker, 'process', side_effect=storage.StorageUnavailable()):
+            photo_worker.run_scan()
+        item = db.rows('SELECT attempts,retry_after,error FROM photos')[0]
+        self.assertEqual(item, {'attempts':0, 'retry_after':0.0, 'error':None})
+        self.assertEqual(db.state('photo_active_item'), '')
+        self.assertEqual(photos.status()['stage'], 'waiting_for_storage')
 
 
 if __name__ == '__main__': unittest.main()
